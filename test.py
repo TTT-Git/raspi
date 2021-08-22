@@ -52,11 +52,11 @@ else:
     print('Failed to get reading. Try again!')
 
 while True:
-    with open('test2.csv', 'a') as f:
+    with open('test.csv', 'a') as f:
         get_false = True
         while get_false:
             humidity, temperature = Adafruit_DHT.read_retry(sensor, pin)
-            humidity2, temperature2 = Adafruit_DHT.read_retry(sensor, pin2)
+            # humidity2, temperature2 = Adafruit_DHT.read_retry(sensor, pin2)
             if humidity is not None and temperature is not None:
                 get_false = False
             else:
@@ -66,5 +66,5 @@ while True:
         writer.writerow([now, temperature, humidity, temperature2, humidity2])
 
     print(now, 'Temp={0:0.1f}*C  Humidity={1:0.1f}%'.format(temperature, humidity))
-    print(now, 'Temp2={0:0.1f}*C  Humidity2={1:0.1f}%'.format(temperature2, humidity2))
+    # print(now, 'Temp2={0:0.1f}*C  Humidity2={1:0.1f}%'.format(temperature2, humidity2))
     time.sleep(5)
