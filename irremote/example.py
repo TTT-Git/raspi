@@ -4,7 +4,10 @@ import pulseio
 import board
 import adafruit_irremote
 
-pulsein = pulseio.PulseIn(board.D18, maxlen=120, idle_state=True)
+from gpio import gpio
+import settings
+
+pulsein = pulseio.PulseIn(gpio[settings.gpio_irreceiver], maxlen=120, idle_state=True)
 decoder = adafruit_irremote.GenericDecode()
 
 
