@@ -1,1 +1,1 @@
-from irremote import example
+from irremote import irremote_receve
