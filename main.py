@@ -27,7 +27,8 @@ while True:
     record['datetime'] = datetime.datetime.now()
     print(record)
     
-    with open('result_20210830.csv', "a") as f:
+
+    with open(settings.out_file_name, "a") as f:
         writer = csv.DictWriter(f, list(record.keys()))
         writer.writerow(record)
         time.sleep(10)
