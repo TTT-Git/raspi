@@ -27,6 +27,7 @@ while True:
     record['datetime'] = datetime.datetime.now()
     print(record)
     
+
     with open(settings.out_file_name, "a") as f:
         writer = csv.DictWriter(f, list(record.keys()))
         writer.writerow(record)
