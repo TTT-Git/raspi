@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "raspi"
+version = "0.1.0"
+description = ""
+authors = ["TTT-Git <tsune33@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+adafruit-circuitpython-dht = "^3.6.1"
+spidev = "^3.5"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
