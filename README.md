@@ -16,3 +16,7 @@ sudo apt-get install libgpiod2
 GPIO番号を設定する。
 結果を保存するパスを設定する。
 
+
+## heart beat
+raspi-config でSPIを有効にする。
+pip3 install spidev
