@@ -1,4 +1,44 @@
 [[package]]
+name = "adafruit-blinka"
+version = "6.13.0"
+description = "CircuitPython APIs for non-CircuitPython versions of Python such as CPython on Linux and MicroPython."
+category = "main"
+optional = false
+python-versions = ">=3.6.0"
+
+[package.dependencies]
+Adafruit-PlatformDetect = ">=3.13.0"
+Adafruit-PureIO = ">=1.1.7"
+pyftdi = ">=0.40.0"
+
+[[package]]
+name = "adafruit-circuitpython-dht"
+version = "3.6.1"
+description = "CircuitPython support for DHT11 and DHT22 type temperature/humidity devices"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+Adafruit-Blinka = "*"
+
+[[package]]
+name = "adafruit-platformdetect"
+version = "3.15.3"
+description = "Platform detection for use by libraries like Adafruit-Blinka."
+category = "main"
+optional = false
+python-versions = ">=3.6.0"
+
+[[package]]
+name = "adafruit-pureio"
+version = "1.1.9"
+description = "Pure python (i.e. no native extensions) access to Linux IO    including I2C and SPI. Drop in replacement for smbus and spidev modules."
+category = "main"
+optional = false
+python-versions = ">=3.5.0"
+
+[[package]]
 name = "numpy"
 version = "1.21.1"
 description = "NumPy is the fundamental package for array computing with Python."
@@ -23,6 +63,29 @@ pytz = ">=2017.3"
 test = ["hypothesis (>=3.58)", "pytest (>=6.0)", "pytest-xdist"]
 
 [[package]]
+name = "pyftdi"
+version = "0.53.3"
+description = "FTDI device driver (pure Python)"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.dependencies]
+pyserial = ">=3.0"
+pyusb = ">=1.0.0,<1.2.0 || >1.2.0"
+
+[[package]]
+name = "pyserial"
+version = "3.5"
+description = "Python Serial Port Extension"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.extras]
+cp2110 = ["hidapi"]
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -37,6 +100,22 @@ six = ">=1.5"
 name = "pytz"
 version = "2021.1"
 description = "World timezone definitions, modern and historical"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
+name = "pyusb"
+version = "1.2.1"
+description = "Python USB access module"
+category = "main"
+optional = false
+python-versions = ">=3.6.0"
+
+[[package]]
+name = "rpi.gpio"
+version = "0.7.0"
+description = "A module to control Raspberry Pi GPIO channels"
 category = "main"
 optional = false
 python-versions = "*"
@@ -60,9 +139,21 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7.1,<4.0"
-content-hash = "71b9b007012fadddd7afaf4b1324e3e6569cbc506fe75e4c70fdb01c95fcd4c8"
+content-hash = "20bb13c305840a022707b4e9d7904e9a5535701f62b95783455c60eb82a1fdb5"
 
 [metadata.files]
+adafruit-blinka = [
+    {file = "Adafruit-Blinka-6.13.0.tar.gz", hash = "sha256:acbcfb778dc5e37ad9ef0aa1e1998e597a99c8a2a08b0dda58c05681950ea1f2"},
+]
+adafruit-circuitpython-dht = [
+    {file = "adafruit-circuitpython-dht-3.6.1.tar.gz", hash = "sha256:dc7ff98c82db88531affea7c92b7bc470ab1002730c3fd0cf54bafc020f6e333"},
+]
+adafruit-platformdetect = [
+    {file = "Adafruit-PlatformDetect-3.15.3.tar.gz", hash = "sha256:726782879e1dc18c1b2f50301ab3f04c3a7817a54e35c955ee2bb64a6d60df74"},
+]
+adafruit-pureio = [
+    {file = "Adafruit_PureIO-1.1.9.tar.gz", hash = "sha256:2caf22fb07c7f771d83267f331a76cde314723f884a9570ea6f768730c87a879"},
+]
 numpy = [
     {file = "numpy-1.21.1-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:38e8648f9449a549a7dfe8d8755a5979b45b3538520d1e735637ef28e8c2dc50"},
     {file = "numpy-1.21.1-cp37-cp37m-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:fd7d7409fa643a91d0a05c7554dd68aa9c9bb16e186f6ccfe40d6e003156e33a"},
@@ -116,6 +207,14 @@ pandas = [
     {file = "pandas-1.3.3-cp39-cp39-win_amd64.whl", hash = "sha256:e574c2637c9d27f322e911650b36e858c885702c5996eda8a5a60e35e6648cf2"},
     {file = "pandas-1.3.3.tar.gz", hash = "sha256:272c8cb14aa9793eada6b1ebe81994616e647b5892a370c7135efb2924b701df"},
 ]
+pyftdi = [
+    {file = "pyftdi-0.53.3-py3-none-any.whl", hash = "sha256:6e86880ec6d66389de643ca83de5d59fffea3bd334f492e12fab71a832f878a2"},
+    {file = "pyftdi-0.53.3.tar.gz", hash = "sha256:4ef20c246bdb0f278d283337d7a6e69cf9bdb0ead525e7ad867d9e46ad26e613"},
+]
+pyserial = [
+    {file = "pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0"},
+    {file = "pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb"},
+]
 python-dateutil = [
     {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},
     {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
@@ -123,6 +222,13 @@ python-dateutil = [
 pytz = [
     {file = "pytz-2021.1-py2.py3-none-any.whl", hash = "sha256:eb10ce3e7736052ed3623d49975ce333bcd712c7bb19a58b9e2089d4057d0798"},
     {file = "pytz-2021.1.tar.gz", hash = "sha256:83a4a90894bf38e243cf052c8b58f381bfe9a7a483f6a9cab140bc7f702ac4da"},
+]
+pyusb = [
+    {file = "pyusb-1.2.1-py3-none-any.whl", hash = "sha256:2b4c7cb86dbadf044dfb9d3a4ff69fd217013dbe78a792177a3feb172449ea36"},
+    {file = "pyusb-1.2.1.tar.gz", hash = "sha256:a4cc7404a203144754164b8b40994e2849fde1cfff06b08492f12fff9d9de7b9"},
+]
+"rpi.gpio" = [
+    {file = "RPi.GPIO-0.7.0.tar.gz", hash = "sha256:7424bc6c205466764f30f666c18187a0824077daf20b295c42f08aea2cb87d3f"},
 ]
 six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
