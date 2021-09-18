@@ -8,7 +8,11 @@ import board
 from gpio import gpio
 import settings
 
-dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22], use_pulseio=settings.use_pulseio_dht22)
+try:
+    dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22], use_pulseio=True)
+except NameError as e:
+    print(e, 'change use_pulseio True -> False')
+    dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22], use_pulseio=False)
 def get_temp_humid(limit=15):
 
 
