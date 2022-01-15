@@ -32,7 +32,7 @@ while True:
     else:
         record_co2 = {}
     
-    record = dict(**record_temp_humid, **record_temp_humid_2 **record_co2)
+    record = dict(**record_temp_humid, **record_temp_humid_2, **record_co2)
     record['datetime'] = datetime.datetime.now()
     print(record)
     
