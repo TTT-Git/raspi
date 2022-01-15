@@ -12,8 +12,10 @@ def use_or_not(int_value):
     else:
         raise ValueError
 
-use_dht22 = use_or_not(int(conf['DEVICE']['dht22']))
-use_dht22_2 = use_or_not(int(conf['DEVICE']['dht22_2']))
+use_dht22 = {
+    0: use_or_not(int(conf['DEVICE']['dht22'])),
+    1: use_or_not(int(conf['DEVICE']['dht22_2']))
+}
 use_co2 = use_or_not(int(conf['DEVICE']['co2']))
 
 gpio_dht22 = {
