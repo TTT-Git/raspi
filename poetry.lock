@@ -113,14 +113,6 @@ optional = false
 python-versions = ">=3.6.0"
 
 [[package]]
-name = "rpi.gpio"
-version = "0.7.0"
-description = "A module to control Raspberry Pi GPIO channels"
-category = "main"
-optional = false
-python-versions = "*"
-
-[[package]]
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -139,7 +131,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.7.1,<4.0"
-content-hash = "20bb13c305840a022707b4e9d7904e9a5535701f62b95783455c60eb82a1fdb5"
+content-hash = "fcf8faaddc41e0cf182ef2c52bb94e64f228eb865117e0beb33cfc291d765f42"
 
 [metadata.files]
 adafruit-blinka = [
@@ -226,9 +218,6 @@ pytz = [
 pyusb = [
     {file = "pyusb-1.2.1-py3-none-any.whl", hash = "sha256:2b4c7cb86dbadf044dfb9d3a4ff69fd217013dbe78a792177a3feb172449ea36"},
     {file = "pyusb-1.2.1.tar.gz", hash = "sha256:a4cc7404a203144754164b8b40994e2849fde1cfff06b08492f12fff9d9de7b9"},
-]
-"rpi.gpio" = [
-    {file = "RPi.GPIO-0.7.0.tar.gz", hash = "sha256:7424bc6c205466764f30f666c18187a0824077daf20b295c42f08aea2cb87d3f"},
 ]
 six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
