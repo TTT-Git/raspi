@@ -10,13 +10,14 @@ import settings
 
 class Tempreture_humid(object):
     def __init__(self,device_num=0) -> None:
-        self.use_device = settings.use_dht22[device_num]
+        self.device_num = device_num
+        self.use_device = settings.use_dht22[self.device_num]
         if self.use_device:    
             try:
-                self.dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22[device_num]], use_pulseio=True)
+                self.dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22[self.device_num]], use_pulseio=True)
             except NameError as e:
                 print(e, 'change use_pulseio True -> False')
-                self.dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22[device_num]], use_pulseio=False)
+                self.dhtDevice = adafruit_dht.DHT22(gpio[settings.gpio_dht22[self.device_num]], use_pulseio=False)
 
 
     def get_temp_humid(self, limit=15, wait_time_sec=1.0):
@@ -27,8 +28,8 @@ class Tempreture_humid(object):
                 humidity = self.dhtDevice.humidity
                 if type(temperature_c) == float and type(humidity) == float: 
                     record = {
-                        "temperature_c": round(temperature_c,2),
-                        'humidity': round(humidity, 1)
+                        "temperature_c_" + str(self.device_num): round(temperature_c,2),
+                        'humidity_' + str(self.device_num): round(humidity, 1)
                     }
                     return record
 
