@@ -39,9 +39,7 @@ class Raspi(object):
                         print(e, line)
         
         else:
-            print('debug1')
             self.result_dict = main_return_onece.main_func()
-            print('debug2')
             self.result_dict['hostname'] = settings.system_name
 
 
