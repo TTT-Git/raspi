@@ -1,6 +1,11 @@
+from time import sleep
+from models import data_collector
 
-from views import views
-
-r = views.Raspi('raspi0-1')
-r.copy_data(file_name='result20220115.csv')
-
+raspi0_1 = data_collector.Raspi(ssh_num=0, remote=True)
+raspi4B = data_collector.Raspi(remote=False)
+for i in range(10):
+    
+    print('get value:', raspi0_1.get_data())
+    print('get value:', raspi4B.get_data())
+    sleep(2)
+ 

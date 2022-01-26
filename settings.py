@@ -28,7 +28,17 @@ gpio_irled = int(conf['GPIO_NUM']['ir_led'])
 
 out_file_name = conf['FILE']['out_file_name']
 
+ssh = {
+    0:{
+        'host' : str(conf['SSH']['host_0']),
+        'user' : str(conf['SSH']['user_0']),
+        'key_file' : str(conf['SSH']['key_file_0'])
+    },
+    1:{
+        'host' : str(conf['SSH']['host_1']),
+        'user' : str(conf['SSH']['user_1']),
+        'key_file' : str(conf['SSH']['key_file_1'])
+    }
+}
 
-host = str(conf['SSH']['host'])
-user = str(conf['SSH']['user'])
-key_file = str(conf['SSH']['key_file'])
+system_name = str(conf['SYSTEM_INFO']['name'])
