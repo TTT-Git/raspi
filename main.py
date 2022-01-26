@@ -26,7 +26,7 @@ while True:
         if not record_co2:
             record_co2 = {}
     else:
-        record_co2 = {}
+        recorde_co2 = {}
     
     record = dict(**record_temp_humid[0], **record_temp_humid[1], **record_co2)
     record['datetime'] = datetime.datetime.now()
