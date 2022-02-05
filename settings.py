@@ -42,3 +42,13 @@ ssh = {
 }
 
 system_name = str(conf['SYSTEM_INFO']['name'])
+
+db_name = conf['DB']['name']
+db_driver = conf['DB']['driver']
+
+meas_pos_dht = {}
+if use_dht22[0]:
+    meas_pos_dht[0] = str(conf['MEAS_POSITION']['dht22'])
+if use_dht22[1]:
+    meas_pos_dht[1] = str(conf['MEAS_POSITION']['dht22_2'])
+

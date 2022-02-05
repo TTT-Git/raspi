@@ -12,7 +12,7 @@ temp_and_humids = {
     1: Tempreture_humid(device_num=1)
 }
 
-def main_func():
+def main_func()-> dict:
 
     record_temp_humid = {}
 
@@ -21,21 +21,21 @@ def main_func():
             record_temp_humid[device_num] = temp_and_humids[device_num].get_temp_humid() 
             if not record_temp_humid[device_num]:
                 record_temp_humid[device_num] = {}
+            record_temp_humid[device_num]['meas_position'] = settings.meas_pos_dht[device_num]
         else:
             record_temp_humid[device_num] = {}
 
     if settings.use_co2:
+        device_num = 0
         record_co2 = get_co2.get_co2()
-        if not record_co2:
-            record_co2 = {}
-    else:
-        record_co2 = {}
+        if record_co2:
+            record_temp_humid[device_num].update(record_co2)
 
-    record = dict(**record_temp_humid[0], **record_temp_humid[1], **record_co2)
-    record['datetime'] = str(datetime.datetime.now())
-    print(json.dumps(record))
+    record_temp_humid['datetime'] = str(datetime.datetime.now())
+    if __name__ == '__main__':
+        print(json.dumps(record_temp_humid))
 
-    return record
+    return record_temp_humid
 
 
     

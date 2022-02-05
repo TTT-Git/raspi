@@ -28,8 +28,8 @@ class Tempreture_humid(object):
                 humidity = self.dhtDevice.humidity
                 if type(temperature_c) == float and type(humidity) == float: 
                     record = {
-                        "temperature_c_" + str(self.device_num): round(temperature_c,2),
-                        'humidity_' + str(self.device_num): round(humidity, 1)
+                        "temperature_c": round(temperature_c,2),
+                        'humidity': round(humidity, 1)
                     }
                     return record
 
