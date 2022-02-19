@@ -1,5 +1,6 @@
 *.csv
 settings.ini
+temp_humid.sql
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

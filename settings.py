@@ -52,3 +52,4 @@ if use_dht22[0]:
 if use_dht22[1]:
     meas_pos_dht[1] = str(conf['MEAS_POSITION']['dht22_2'])
 
+web_port = int(conf['WEB']['port'])

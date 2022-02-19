@@ -41,8 +41,7 @@ def session_scope():
         lock.release()
 
 
-class TempHumid(Base):
-    __tablename__ = 'temp_humid'
+class BaseTempHumidMixin(object):
     time = Column(DateTime, primary_key=True, nullable=False)
     temperature = Column(Float)
     humidity = Column(Float)
@@ -80,7 +79,7 @@ class TempHumid(Base):
             session.add(self)
     
     @classmethod
-    def get_all_candles(cls, limit=100):
+    def get_all_data(cls, limit=100):
         """
         データベースからデータを取得して,返す。
         データは、最新のものから、limitで指定した数、
@@ -135,7 +134,7 @@ class TempHumid(Base):
         return temp_humid_data
     
     @classmethod
-    def get_candles_after_time(cls, time):
+    def get_data_after_time(cls, time):
         """
         ある日時以降のcandleを抽出
 
@@ -154,8 +153,34 @@ class TempHumid(Base):
             return None
 
         return temp_humid_data
-    
 
+
+class TempHumid_Raspi0_1_0(BaseTempHumidMixin,Base):
+    __tablename__ = 'TempHumid_Raspi0_1_0'
+
+class TempHumid_Raspi0_2_0(BaseTempHumidMixin,Base):
+    __tablename__ = 'TempHumid_Raspi0_2_0'
+
+class TempHumid_Raspi0_2_1(BaseTempHumidMixin,Base):
+    __tablename__ = 'TempHumid_Raspi0_2_1'
+
+class TempHumid_Raspi4B_1_0(BaseTempHumidMixin,Base):
+    __tablename__ = 'TempHumid_Raspi4B_1_0'
+
+
+def factory_temp_humid_class(hostname, device_num):
+    
+    if hostname == settings.ssh[0]['host']:
+        if device_num == 0:
+            return TempHumid_Raspi0_1_0
+    if hostname == settings.ssh[1]['host']:
+        if device_num == 0:
+            return TempHumid_Raspi0_2_0
+        if device_num == 1:
+            return TempHumid_Raspi0_2_1
+    if hostname == settings.system_name:
+        if device_num == 0:
+            return TempHumid_Raspi4B_1_0
 
 def init_db():
     Base.metadata.create_all(bind=engine)
