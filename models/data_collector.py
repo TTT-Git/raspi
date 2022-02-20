@@ -43,7 +43,14 @@ class Raspi(object):
                             'data': f"hostname={settings.ssh[self.ssh_num]['host']}, username={settings.ssh[self.ssh_num]['user']}, key_filename={settings.ssh[self.ssh_num]['key_file']}"
                         })
                     return {}
-
+                except paramiko.ssh_exception.SSHException as e:
+                    logger.error({
+                            'action': 'ssh connect',
+                            'status': 'paramiko.ssh_exception.SSHException',
+                            'message': f'error message: {e}',
+                            'data': f"hostname={settings.ssh[self.ssh_num]['host']}, username={settings.ssh[self.ssh_num]['user']}, key_filename={settings.ssh[self.ssh_num]['key_file']}"
+                        })
+                    return {}
 
                 # サーバー上で実行するコマンドを設定
                 CMD = 'cd ' + py_file_path + ' ; python3 ' + py_file_name
@@ -62,7 +69,7 @@ class Raspi(object):
                             'action': 'json decode',
                             'status': 'json.JSONDecodeError',
                             'message': f'error message {e}',
-                            'data': f'line={line}'
+                            'data': f"line={line}, hostname={settings.ssh[self.ssh_num]['host']}"
                         })
         
         else:
