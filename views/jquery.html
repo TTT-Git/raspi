@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chart</title>
+    <style>
+        #dashboard_div{
+            width: 600px;
+            border: 1px solid #ccc;
+        }
+        #chart_div{
+            height:400px;
+            border-bottom: 1px solid #ccc;
+        }
+        #filter_div{
+            height:50px;
+        }
+        .technical_title{
+            margin: 10px;
+            color: gray;
+        }
+        .bottom_chart{
+            border-bottom: 1px solid #ccc;
+        }
+    </style>
+
+
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script type="text/javascript">
+        google.charts.load('current', {'packages':['line']});
+
+        var config = {
+            api:{
+                enable: true,
+                interval: 1000 * 3
+            },
+            temp_humid:{
+                hostname: 'raspi4B',
+                device_num: 0,
+                term_hour: 24,
+            },
+        };
+
+        var params = {
+            hostname: config.temp_humid.hostname,
+            device_num: config.temp_humid.device_num,
+            term_hour: config.temp_humid.term_hour,
+        };
+        var params0 = {
+            hostname: 'raspi4B',
+            device_num: 0,
+            term_hour: 24,
+        };
+        var params1 = {
+            hostname: 'raspi0-1.local',
+            device_num: 0,
+            term_hour: 24,
+        };
+        var params2 = {
+            hostname: 'raspi0-2.local',
+            device_num: 0,
+            term_hour: 24,
+        };
+        var params3 = {
+            hostname: 'raspi0-2.local',
+            device_num: 1,
+            term_hour: 24,
+        };
+
+        function drawChart(dataTable) {
+
+            var options = {
+            chart: {
+                title: 'Box Office Earnings in First Two Weeks of Opening',
+                subtitle: 'in millions of dollars (USD)'
+            },
+            width: 900,
+            height: 500,
+
+            };
+            console.log(dataTable);
+            var chart = new google.charts.Line(document.getElementById('curve_chart'));
+
+            chart.draw(dataTable, google.charts.Line.convertOptions(options));
+            }
+
+        function send(params) {
+            if (config.api.enable == false){
+                return
+            }
+
+        
+            $.get("/api/candle", params).done(function (data) {
+                var dataTable = new google.visualization.DataTable();
+                dataTable.addColumn('date', 'Date');
+                dataTable.addColumn('number', data["temp_humid"][0].meas_position);
+
+                var googleChartData = [];
+                var temp_humid_data = data["temp_humid"];
+
+                for(var i=0; i < temp_humid_data.length; i++){
+                    var temp_humid = temp_humid_data[i];
+                    var date = new Date(temp_humid.time);
+                    date.setHours(date.getHours() -9);
+                    var datas = [date, temp_humid.temperature];
+                    
+
+                
+                    googleChartData.push(datas);
+                }
+
+                dataTable.addRows(googleChartData);
+                
+                drawChart(dataTable);
+                
+            })
+        }
+
+        function changeDuration(s){
+        if (s == 0) {
+            params = params0;
+        } 
+        if (s == 1) {
+            params = params1;
+        } 
+        if (s == 2) {
+            params = params2;
+        } 
+        if (s == 3) {
+            params = params3;
+        } 
+        send(params);
+        }
+        setInterval(send, 1000 * 3);
+        window.onload = function(){
+            send(params);
+        }
+    </script>
+
+
+
+
+    </meta>
+</head>
+<body>
+    <div id="curve_chart" style="width: 900px; height: 500px"></div>
+    
+    <div>
+        <div>
+            <button onclick="changeDuration(0);">desk</button>
+            <button onclick="changeDuration(1);">under the desk</button>
+            <button onclick="changeDuration(2);">above_curtain_rail</button>
+            <button onclick="changeDuration(3);">outside</button>
+        </div>
+    </div>
+    
+</body>
+
+
+</html>

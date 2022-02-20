@@ -1,7 +1,7 @@
 import subprocess
 import sys
 
-def get_co2(limit=15)->int:
+def get_co2(limit=15)->dict:
     """
     get co2 concentration from mh_z19
     input
