@@ -201,6 +201,9 @@ optional = false
 python-versions = ">=3.6.0"
 
 [[package]]
+name = "spidev"
+version = "3.5"
+description = "Python bindings for Linux SPI access through spidev"
 name = "scp"
 version = "0.14.2"
 description = "scp module for paramiko"
