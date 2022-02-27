@@ -53,3 +53,8 @@ if use_dht22[1]:
     meas_pos_dht[1] = str(conf['MEAS_POSITION']['dht22_2'])
 
 web_port = int(conf['WEB']['port'])
+
+time_interval_temp_humid_sec = int(conf['DATA_COLLECTION']['time_interval_temp_humid_sec'])
+
+time_interval_aircon_ai_sec = int(conf['AIRCON_AI']['time_interval_aircon_ai_sec'])
+target_temp = int(conf['AIRCON_AI']['target_temp'])
