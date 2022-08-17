@@ -2,6 +2,7 @@
 settings.ini
 temp_humid.sql
 temp_humid.sql-journal
+drawio/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

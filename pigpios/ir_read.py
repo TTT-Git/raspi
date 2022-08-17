@@ -5,7 +5,7 @@ post_time = 130  #これ以上途切れたらコードが終了したと判断�
 no_confirm = True
 
 gpio = 18  #GPIOピンの番号
-id_ = "heater:16"  #コマンドにつける名前
+id_ = "cooler:26"  #コマンドにつける名前
 
 ir = IRRP(file=save_file, post=post_time, no_confirm=no_confirm)  #インスタンス化、設定できる値はプログラムの方を見て
 

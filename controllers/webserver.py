@@ -40,6 +40,12 @@ def index():
 def api_make_handler():
     hostname = request.args.get('hostname')
     if not hostname:
+        logger.error({
+            'action': 'api_make_handler check hostname',
+            'status': 'error',
+            'message': f'no hostname',
+            'data': f'hostname: {hostname}'
+        })
         return jsonify({'error': 'No hostname params'}) ,400
     
     term_hour_str = request.args.get('term_hour')

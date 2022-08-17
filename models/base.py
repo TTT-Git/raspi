@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 import settings
 
-engine = create_engine(f'sqlite:///{settings.db_name}?check_same_thread=False')
+engine = create_engine(f'sqlite:///{settings.db_name}?check_same_thread=False', connect_args={'timeout': 10})
 # engine = create_engine(f'sqlite:///:memory:')
 Base = declarative_base()
 Session = scoped_session(sessionmaker(bind=engine))

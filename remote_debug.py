@@ -26,13 +26,13 @@ class Aircon(object):
         self.ir.stop()
     
     def heater(self, temp:int):
-        id = 'heater:' + str(int(temp))
+        id = 'heater:' + str(temp)
         print(id)
         self.ir.Playback(GPIO=self.gpio_num, ID=id)
         self.ir.stop()
 
     def cooler(self, temp:int):
-        id = 'cooler:' + str(int(temp))
+        id = 'cooler:' + str(temp)
         print(id)
         self.ir.Playback(GPIO=self.gpio_num, ID=id)
         self.ir.stop()
@@ -40,5 +40,5 @@ class Aircon(object):
 if __name__ == '__main__':
     # test()
     aircon = Aircon()
-    aircon.heater(28)
+    aircon.cooler(27)
 

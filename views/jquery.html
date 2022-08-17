@@ -103,7 +103,13 @@
                     var temp_humid = temp_humid_data[i];
                     var date = new Date(temp_humid.time);
                     date.setHours(date.getHours() -9);
-                    var datas = [date, temp_humid.temperature];
+                    if (humid == 0){
+                        var datas = [date, temp_humid.temperature];
+                    }
+                    if (humid == 1){
+                        var datas = [date, temp_humid.humidity];
+                    }
+                    
                     
 
                 
@@ -118,17 +124,22 @@
         }
 
         function changeDuration(s){
+        humid = 0
         if (s == 0) {
             params = params0;
         } 
         if (s == 1) {
             params = params1;
         } 
-        if (s == 2) {
-            params = params2;
+        // if (s == 2) {
+        //     params = params2;
+        // } 
+        // if (s == 3) {
+        //     params = params3;
         } 
-        if (s == 3) {
-            params = params3;
+        if (s == 4) {
+            params = params0;
+            humid = 1
         } 
         send(params);
         }
@@ -152,6 +163,9 @@
             <button onclick="changeDuration(1);">under the desk</button>
             <button onclick="changeDuration(2);">above_curtain_rail</button>
             <button onclick="changeDuration(3);">outside</button>
+        </div>
+        <div>
+            <button onclick="changeDuration(4);">desk_humidity</button>
         </div>
     </div>
     
