@@ -1,7 +1,7 @@
 import logging
 import math
 
-from pigpios.ir_ctl import Aircon
+from pigpios.ir_ctrl import Aircon
 from models.base import factory_temp_humid_class
 import settings
 

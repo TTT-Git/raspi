@@ -27,6 +27,9 @@ gpio_irreceiver = int(conf['GPIO_NUM']['ir_receiver'])
 gpio_irled = int(conf['GPIO_NUM']['ir_led'])
 
 out_file_name = conf['FILE']['out_file_name']
+codes_aircon_file = conf['FILE']['codes_aircon_file']
+remote_aircon_ir_file = conf['FILE']['remote_aircon_ir_file']
+main_dir = conf['FILE']['main_dir']
 
 ssh = {
     0:{
