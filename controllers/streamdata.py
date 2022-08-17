@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 from time import sleep
 
-from models import data_collector
+from models import ssh_ctrl_remote_raspi
 
 import models
 from models.base import factory_temp_humid_class
@@ -19,9 +19,9 @@ class StreamTempHumidData(object):
     def __init__(self) -> None:
         self.base_list = [TempHumid_Raspi0_1_0, TempHumid_Raspi0_2_0, TempHumid_Raspi0_2_1, TempHumid_Raspi4B_1_0]
 
-        self.raspi0_1 = data_collector.Raspi(ssh_num=0, remote=True)
-        self.raspi0_2 = data_collector.Raspi(ssh_num=1, remote=True)
-        self.raspi4B = data_collector.Raspi(remote=False)
+        self.raspi0_1 = ssh_ctrl_remote_raspi.Raspi(ssh_num=0, remote=True)
+        self.raspi0_2 = ssh_ctrl_remote_raspi.Raspi(ssh_num=1, remote=True)
+        self.raspi4B = ssh_ctrl_remote_raspi.Raspi(remote=False)
 
 
     def write_sql(self, result_dict):
