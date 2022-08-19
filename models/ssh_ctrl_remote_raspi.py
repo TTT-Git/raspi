@@ -25,7 +25,6 @@ class Raspi(object):
 
             # ssh接続する
             try:
-                print(self.hostname, self.username, self.key_filename)
                 ssh.connect(
                     hostname=self.hostname, 
                     username=self.username,
@@ -62,7 +61,7 @@ class Raspi(object):
             
     
 
-    def get_data(self, py_file_path='/home/pi/python/raspi', py_file_name='main_return_onece.py'):
+    def get_data(self, py_file_path=settings.main_dir , py_file_name='main_return_onece.py'):
         
         if self.remote:
             # コマンド実行結果を変数に格納
