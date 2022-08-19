@@ -50,13 +50,10 @@ def write_sql(result_dict):
 
 while True:
     raspi0_1_result_dict = raspi0_1.get_data()
-
     raspi0_2_result_dict = raspi0_2.get_data()
-
     raspi4B_result_dict = raspi4B.get_data()
 
     
-
     for result_dict in [raspi0_1_result_dict, raspi0_2_result_dict, raspi4B_result_dict]:
         if result_dict == {}:
             continue

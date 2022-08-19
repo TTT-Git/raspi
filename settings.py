@@ -1,4 +1,5 @@
 import configparser
+from distutils.util import strtobool
 import os
 
 conf = configparser.ConfigParser()
@@ -61,3 +62,13 @@ time_interval_temp_humid_sec = int(conf['DATA_COLLECTION']['time_interval_temp_h
 
 time_interval_aircon_ai_sec = int(conf['AIRCON_AI']['time_interval_aircon_ai_sec'])
 target_temp = float(conf['AIRCON_AI']['target_temp'])
+temp_range = float(conf['AIRCON_AI']['temp_range'])
+remote_ir = bool(strtobool(conf['AIRCON_AI']['remote_ir']))
+remote_ir_raspi_ssh_num = int(conf['AIRCON_AI']['remote_ir_raspi_ssh_num'])
+heater_setting_lower_limit = int(conf['AIRCON_AI']['heater_setting_lower_limit'])
+heater_setting_upper_limit = int(conf['AIRCON_AI']['heater_setting_upper_limit'])
+cooler_setting_lower_limit = int(conf['AIRCON_AI']['cooler_setting_lower_limit'])
+cooler_setting_upper_limit = int(conf['AIRCON_AI']['cooler_setting_upper_limit'])
+heater_mote_initial_setting = bool(strtobool(conf['AIRCON_AI']['heater_mote_initial_setting']))
+use_temperature_sensor_hostname = conf['AIRCON_AI']['use_temperature_sensor_hostname']
+use_temperature_sensor_device_num = int(conf['AIRCON_AI']['use_temperature_sensor_device_num'])

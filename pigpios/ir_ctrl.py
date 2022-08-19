@@ -1,14 +1,11 @@
-import paramiko
-import socket
-
 from pigpios.irrp_m import IRRP
 
 import settings
-from models.ssh_ctrl_remote_raspi import Raspi
 
 
 class Aircon(object):
-    def __init__(self, file=settings.codes_aircon_file, gpio_num=settings.gpio_irled, remote_raspi=False, ssh_num=1):
+    def __init__(self, file=settings.codes_aircon_file, gpio_num=settings.gpio_irled, 
+                remote_raspi=False, ssh_num=1):
         self.ir = IRRP(file=file, no_confirm=True)
         self.gpio_num = gpio_num
         self.remote_raspi = remote_raspi
@@ -59,11 +56,12 @@ class Aircon(object):
         self.ir.stop()
     
     def remote_raspi_ir_ctl(self, id):
+        from models.ssh_ctrl_remote_raspi import Raspi
         raspi = Raspi(self.ssh_num)
         # サーバー上で実行するコマンドを設定
         CMD = 'cd ' + settings.main_dir + ' ; python3 ' + settings.remote_aircon_ir_file + ' ' + id
         # コマンドの実行
-        stdout = raspi.send_cmd(CMD)
+        raspi.send_cmd(CMD)
 
 
 
