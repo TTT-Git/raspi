@@ -1,7 +1,7 @@
 import logging
 from threading import Thread
 
-from controllers.webserver import start
+# from controllers.webserver import start
 from controllers.aircon_stream import aircon_stream
 from controllers.streamdata import stream_temp_humid
 # logging.basicConfig(level=logging.INFO, 
@@ -14,14 +14,14 @@ logging.basicConfig(level=logging.INFO,
 
 if __name__ == "__main__":
 
-    serverThread = Thread(target=start)
+    # serverThread = Thread(target=start)
     airconStrameThread = Thread(target=aircon_stream.stream_aircon_ctrl)
     # streamTempHumidThread = Thread(target=stream_temp_humid.stream_get_data())
 
-    serverThread.start()
+    # serverThread.start()
     airconStrameThread.start()
     # streamTempHumidThread.start()
 
-    serverThread.join()
+    # serverThread.join()
     airconStrameThread.join()
     # streamTempHumidThread.join()

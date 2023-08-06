@@ -31,6 +31,8 @@ out_file_name = conf['FILE']['out_file_name']
 codes_aircon_file = conf['FILE']['codes_aircon_file']
 remote_aircon_ir_file = conf['FILE']['remote_aircon_ir_file']
 main_dir = conf['FILE']['main_dir']
+main_dir_host0 = conf['FILE']['main_dir_host0']
+main_dir_host1 = conf['FILE']['main_dir_host1']
 
 ssh = {
     0:{
