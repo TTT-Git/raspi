@@ -537,14 +537,33 @@
         } 
             send(params, true);  // 強制更新
         }
+
+        function changeTimeRange(hours){
+            // 現在のparamsのhostnameとdevice_numを保持
+            var hostname = currentParams.hostname || params.hostname;
+            var device_num = currentParams.device_num !== undefined ? currentParams.device_num : params.device_num;
+            
+            // term_hourを更新
+            params = {
+                hostname: hostname,
+                device_num: device_num,
+                term_hour: hours
+            };
+            currentParams = params;
+            
+            send(params, true);  // 強制更新
+            
+            // アクティブボタンを更新
+            setActiveTimeRangeButton(hours);
+        }
         
         // 初期化関数
         window.initChart = function() {
             // 初回読み込み
             send(params, true);
             
-            // 定期的にデータ更新をチェック（30秒ごと）
-            setInterval(checkForUpdates, 1000 * 30);
+            // 定期的にデータ更新をチェック（1分ごと）
+            setInterval(checkForUpdates, 1000 * 60);
         };
 
         window.onload = function(){
@@ -598,6 +617,15 @@
                     <button onclick="changeDuration(4);" id="btn-4">デスク - 湿度</button>
                 </div>
             </div>
+            <div class="control-group">
+                <label>表示範囲</label>
+                <div class="button-group">
+                    <button onclick="changeTimeRange(12);" id="btn-time-12">12時間</button>
+                    <button onclick="changeTimeRange(24);" id="btn-time-24">24時間</button>
+                    <button onclick="changeTimeRange(48);" id="btn-time-48">48時間</button>
+                    <button onclick="changeTimeRange(72);" id="btn-time-72">72時間</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -618,6 +646,23 @@
             }
         }
 
+        // 時間範囲ボタンのアクティブ状態管理
+        function setActiveTimeRangeButton(hours) {
+            // すべての時間範囲ボタンからactiveクラスを削除
+            var timeButtons = ['btn-time-12', 'btn-time-24', 'btn-time-48', 'btn-time-72'];
+            timeButtons.forEach(function(btnId) {
+                var btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.classList.remove('active');
+                }
+            });
+            // クリックされたボタンにactiveクラスを追加
+            var activeBtn = document.getElementById('btn-time-' + hours);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            }
+        }
+
         // changeDuration関数を更新
         var originalChangeDuration = changeDuration;
         changeDuration = function(s) {
@@ -628,6 +673,7 @@
         // 初期化時にアクティブボタンを設定
         window.addEventListener('load', function() {
             setActiveButton(0);
+            setActiveTimeRangeButton(24);  // デフォルトは24時間
         });
     </script>
 </body>
