@@ -38,8 +38,9 @@ class Aircon(object):
         self.ir.Playback(GPIO=self.gpio_num, ID=id)
         self.ir.stop()
     
-    def heater(self, temp:int):
-        id = 'heater:' + str(int(temp))
+    def heater(self, temp:int, fan:str='auto'):
+        # id = 'heater:' + str(int(temp))
+        id = f"onoff:{'on'}_mode:{'heater'}_temp:{int(temp)}_fan:{fan}_sound:{'no'}"
         print(id)
         if self.remote_raspi:
             self.remote_raspi_ir_ctl(id)
@@ -47,8 +48,9 @@ class Aircon(object):
         self.ir.Playback(GPIO=self.gpio_num, ID=id)
         self.ir.stop()
 
-    def cooler(self, temp:int):
-        id = 'cooler:' + str(int(temp))
+    def cooler(self, temp:int, fan:str='auto'):
+        # id = 'cooler:' + str(int(temp))
+        id = f"onoff:{'on'}_mode:{'cooler'}_temp:{int(temp)}_fan:{fan}_sound:{'no'}"
         print(id)
         if self.remote_raspi:
             self.remote_raspi_ir_ctl(id)

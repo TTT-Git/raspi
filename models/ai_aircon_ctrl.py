@@ -1,5 +1,11 @@
+from datetime import datetime
+from datetime import timedelta
 import logging
 import math
+import numpy as np
+
+
+import pandas as pd
 
 from pigpios.ir_ctrl import Aircon
 from models.base import factory_temp_humid_class
@@ -32,9 +38,43 @@ class Ai(object):
 
     def get_temp(self):
         temp_humid_cls = factory_temp_humid_class(self.hostname, self.device_num)
-        temp_humid_data = temp_humid_cls.latest_record()
-        self.temperature = temp_humid_data.value['temperature']
-        self.data_time = temp_humid_data.value['time']
+        # temp_humid_data = temp_humid_cls.latest_record()
+        # self.temperature = temp_humid_data.value['temperature']
+        # self.data_time = temp_humid_data.value['time']
+
+
+        # 直近3分のデータを１次フィッティングし、3分後の温度を予測する。
+        now = datetime.utcnow() + timedelta(hours=9)
+
+        get_from = now - timedelta(minutes=3)
+
+        temp_humid_datas = temp_humid_cls.get_data_after_time(get_from)
+        temp_humid_data_list = [temp_humid_data.value for temp_humid_data in temp_humid_datas]
+        df = pd.DataFrame(temp_humid_data_list)
+
+        # 時間と温度のデータ
+        time = (df['time'] - df.loc[0,'time']).apply(lambda t:t.seconds).values # ここに時間のデータを入力
+        temp = df['temperature'].values # ここに温度のデータを入力
+
+        # フィッティング
+        #1次式
+        coef_1 = np.polyfit(time,temp,1) #係数
+        predict_time = 180 + (now - df.loc[0,'time']).seconds
+
+        # 積分項
+        get_from = now - timedelta(minutes=10)
+
+        temp_humid_datas = temp_humid_cls.get_data_after_time(get_from)
+        temp_humid_data_list = [temp_humid_data.value for temp_humid_data in temp_humid_datas]
+        df2 = pd.DataFrame(temp_humid_data_list)
+        corr = df2['temperature'].mean() - settings.target_temp
+        corr = 0
+
+        self.temperature = coef_1[0]*predict_time+ coef_1[1] + corr #フィッティング関数
+        self.data_time = now
+        print(f"time:{self.data_time}, predict_temp:{self.temperature}, corr:{corr} temp_now:{temp[-1]}" )
+        print(df)
+        print(time, temp)
 
     def ctrl_temp(self):
         self.get_temp()
@@ -52,17 +92,20 @@ class Ai(object):
                     self.heater_setting_temp = self.heater_setting_temp - math.ceil(gap_temp)
                     if self.heater_setting_temp < self.heater_setting_lower_limit:
                         self.heater_setting_temp = self.heater_setting_lower_limit
-                    self.aircon.heater(self.heater_setting_temp)
+                    self.aircon.heater(self.heater_setting_temp, fan='low')
                 else: 
                     self.cooler_setting_temp = self.cooler_setting_upper_limit
-                    self.aircon.cooler(self.cooler_setting_temp)
+                    self.aircon.cooler(temp=self.cooler_setting_temp, fan='low')
                     self.heater_mode = False
             else:
                 if self.cooler_setting_temp != self.cooler_setting_lower_limit:
                     self.cooler_setting_temp = self.cooler_setting_temp - math.ceil(gap_temp)
                     if self.cooler_setting_temp < self.cooler_setting_lower_limit:
                         self.cooler_setting_temp = self.cooler_setting_lower_limit
-                    self.aircon.cooler(self.cooler_setting_temp)
+                    if gap_temp > 2:
+                        self.aircon.cooler(self.cooler_setting_temp, fan='auto')
+                    else:
+                        self.aircon.cooler(self.cooler_setting_temp, fan='low')
   
         elif self.temperature < self.temp_lower_limit:
             """
@@ -77,17 +120,20 @@ class Ai(object):
                     self.cooler_setting_temp = self.cooler_setting_temp + math.ceil(gap_temp)
                     if self.cooler_setting_temp > self.cooler_setting_upper_limit:
                         self.cooler_setting_temp = self.cooler_setting_upper_limit
-                    self.aircon.cooler(self.cooler_setting_temp)
+                    self.aircon.cooler(self.cooler_setting_temp, fan='low')
                 else:
                     self.heater_setting_temp = self.heater_setting_lower_limit
-                    self.aircon.heater(self.heater_setting_temp)
+                    self.aircon.heater(self.heater_setting_temp, fan='low')
                     self.heater_mode = True
             else:
                 if self.heater_setting_temp != self.heater_setting_upper_limit:
                     self.heater_setting_temp = self.heater_setting_temp + math.ceil(gap_temp)
                     if self.heater_setting_temp > self.heater_setting_upper_limit:
                         self.heater_setting_temp = self.heater_setting_upper_limit
-                    self.aircon.heater(self.heater_setting_temp)
+                    if gap_temp > 2:
+                        self.aircon.heater(self.heater_setting_temp, fan='auto')
+                    else:
+                        self.aircon.heater(self.heater_setting_temp, fan='low')
         logger.info({
             'action': 'ctrl_temp',
             'status': 'nomal',
