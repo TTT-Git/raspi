@@ -1,26 +1,159 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Chart</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>温度・湿度モニター</title>
     <style>
-        #dashboard_div{
-            width: 600px;
-            border: 1px solid #ccc;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        #chart_div{
-            height:400px;
-            border-bottom: 1px solid #ccc;
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #1d1d1f;
         }
-        #filter_div{
-            height:50px;
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
         }
-        .technical_title{
-            margin: 10px;
-            color: gray;
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
         }
-        .bottom_chart{
-            border-bottom: 1px solid #ccc;
+
+        .header h1 {
+            font-size: 48px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            color: #1d1d1f;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 17px;
+            color: #86868b;
+            font-weight: 400;
+        }
+
+        .chart-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .chart-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        #curve_chart {
+            width: 100%;
+            height: 500px;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #86868b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-size: 15px;
+            font-weight: 500;
+            color: #1d1d1f;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        button.active {
+            background: #007aff;
+            color: white;
+            border-color: #007aff;
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 10px;
+            }
+
+            .header h1 {
+                font-size: 36px;
+            }
+
+            .chart-card,
+            .controls {
+                padding: 20px;
+                border-radius: 16px;
+            }
+
+            #curve_chart {
+                height: 400px;
+            }
+
+            button {
+                padding: 10px 18px;
+                font-size: 14px;
+            }
         }
     </style>
 
@@ -29,6 +162,12 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script type="text/javascript">
         google.charts.load('current', {'packages':['line']});
+        google.charts.setOnLoadCallback(function() {
+            // Google Chartsが読み込まれた後に初期化
+            if (typeof window.initChart === 'function') {
+                window.initChart();
+            }
+        });
 
         var config = {
             api:{
@@ -68,30 +207,114 @@
             term_hour: 24,
         };
 
+        var chart = null;  // グラフオブジェクトを保持
+        var lastUpdateTime = null;
+        var currentParams = params;
+
         function drawChart(dataTable) {
-
-            var options = {
-            chart: {
-                title: 'Box Office Earnings in First Two Weeks of Opening',
-                subtitle: 'in millions of dollars (USD)'
-            },
-            width: 900,
-            height: 500,
-
-            };
-            console.log(dataTable);
-            var chart = new google.charts.Line(document.getElementById('curve_chart'));
-
-            chart.draw(dataTable, google.charts.Line.convertOptions(options));
+            if (!dataTable || dataTable.getNumberOfRows() === 0) {
+                console.log('データがありません');
+                return;
             }
 
-        function send(params) {
+            var chartContainer = document.getElementById('curve_chart');
+            if (!chartContainer) {
+                console.log('グラフコンテナが見つかりません');
+                return;
+            }
+
+            var containerWidth = chartContainer.offsetWidth || 900;
+            var options = {
+                chart: {
+                    title: '',
+                    subtitle: ''
+                },
+                width: containerWidth,
+                height: 500,
+                hAxis: {
+                    title: '',
+                    textStyle: {
+                        color: '#86868b',
+                        fontName: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        fontSize: 12
+                    },
+                    gridlines: {
+                        color: 'transparent'
+                    },
+                    format: 'MM/dd HH:mm'
+                },
+                vAxis: {
+                    title: '',
+                    textStyle: {
+                        color: '#86868b',
+                        fontName: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        fontSize: 12
+                    },
+                    gridlines: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                },
+                legend: {
+                    position: 'top',
+                    textStyle: {
+                        color: '#1d1d1f',
+                        fontName: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        fontSize: 13
+                    }
+                },
+                colors: ['#007aff'],
+                backgroundColor: 'transparent',
+                chartArea: {
+                    left: 60,
+                    right: 40,
+                    top: 40,
+                    bottom: 60
+                }
+            };
+            console.log(dataTable);
+            
+            // Google Chartsが読み込まれているか確認
+            if (typeof google === 'undefined' || !google.charts || !google.visualization) {
+                console.error('Google Chartsが読み込まれていません');
+                return;
+            }
+            
+            // 既存のグラフがあれば再利用、なければ新規作成
+            if (!chart) {
+                chart = new google.charts.Line(document.getElementById('curve_chart'));
+            }
+            
+            // グラフを更新（消さずに更新）
+            try {
+                chart.draw(dataTable, google.charts.Line.convertOptions(options));
+            } catch (error) {
+                console.error('グラフの描画エラー:', error);
+            }
+        }
+
+        function send(params, forceUpdate) {
             if (config.api.enable == false){
                 return
             }
 
+            currentParams = params;
         
             $.get("/api/candle", params).done(function (data) {
+                if (!data || !data["temp_humid"] || data["temp_humid"].length === 0) {
+                    return;
+                }
+
+                // 最新データのタイムスタンプを取得
+                var latest = data["temp_humid"][data["temp_humid"].length - 1];
+                var latestTime = new Date(latest.time);
+                
+                // データが更新されていない場合はスキップ（初回と強制更新時を除く）
+                if (!forceUpdate && lastUpdateTime && latestTime.getTime() === lastUpdateTime.getTime()) {
+                    return;
+                }
+                
+                lastUpdateTime = latestTime;
+
                 var dataTable = new google.visualization.DataTable();
                 dataTable.addColumn('date', 'Date');
                 dataTable.addColumn('number', data["temp_humid"][0].meas_position);
@@ -109,17 +332,29 @@
                     if (humid == 1){
                         var datas = [date, temp_humid.humidity];
                     }
-                    
-                    
-
-                
                     googleChartData.push(datas);
                 }
 
                 dataTable.addRows(googleChartData);
                 
+                // グラフを更新（消さずに更新）
                 drawChart(dataTable);
-                
+            })
+        }
+
+        function checkForUpdates() {
+            // 最新データのタイムスタンプをチェック
+            $.get("/api/latest", {
+                hostname: currentParams.hostname,
+                device_num: currentParams.device_num
+            }).done(function(data) {
+                if (data.latest_time) {
+                    var latestTime = new Date(data.latest_time);
+                    // 新しいデータがある場合のみ更新
+                    if (!lastUpdateTime || latestTime.getTime() > lastUpdateTime.getTime()) {
+                        send(currentParams, false);
+                    }
+                }
             })
         }
 
@@ -136,39 +371,102 @@
         // } 
         // if (s == 3) {
         //     params = params3;
-        } 
+        // } 
         if (s == 4) {
             params = params0;
             humid = 1
         } 
-        send(params);
+            send(params, true);  // 強制更新
         }
-        setInterval(send, 1000 * 3);
+        
+        // 初期化関数
+        window.initChart = function() {
+            // 初回読み込み
+            send(params, true);
+            
+            // 定期的にデータ更新をチェック（30秒ごと）
+            setInterval(checkForUpdates, 1000 * 30);
+        };
+
         window.onload = function(){
-            send(params);
+            // Google Chartsが既に読み込まれている場合は即座に初期化
+            if (typeof google !== 'undefined' && google.charts && google.charts.setOnLoadCallback) {
+                // 既にsetOnLoadCallbackで設定されているので、ここでは何もしない
+            } else {
+                // フォールバック: Google Chartsが読み込まれるのを待つ
+                var checkGoogleCharts = setInterval(function() {
+                    if (typeof google !== 'undefined' && google.charts && google.visualization) {
+                        clearInterval(checkGoogleCharts);
+                        window.initChart();
+                    }
+                }, 100);
+            }
         }
     </script>
 
 
 
 
-    </meta>
 </head>
 <body>
-    <div id="curve_chart" style="width: 900px; height: 500px"></div>
-    
-    <div>
-        <div>
-            <button onclick="changeDuration(0);">desk</button>
-            <button onclick="changeDuration(1);">under the desk</button>
-            <button onclick="changeDuration(2);">above_curtain_rail</button>
-            <button onclick="changeDuration(3);">outside</button>
+    <div class="container">
+        <div class="header">
+            <h1>温度・湿度モニター</h1>
+            <p>リアルタイム環境データ</p>
         </div>
-        <div>
-            <button onclick="changeDuration(4);">desk_humidity</button>
+
+        <div class="chart-card">
+            <div id="curve_chart"></div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>測定位置</label>
+                <div class="button-group">
+                    <button onclick="changeDuration(0);" id="btn-0">デスク</button>
+                    <button onclick="changeDuration(1);" id="btn-1">デスク下</button>
+                    <button onclick="changeDuration(2);" id="btn-2">カーテンレール上</button>
+                    <button onclick="changeDuration(3);" id="btn-3">外</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <label>表示タイプ</label>
+                <div class="button-group">
+                    <button onclick="changeDuration(4);" id="btn-4">デスク - 湿度</button>
+                </div>
+            </div>
         </div>
     </div>
-    
+
+    <script>
+        // アクティブボタンのスタイル管理
+        function setActiveButton(index) {
+            // すべてのボタンからactiveクラスを削除
+            for (var i = 0; i <= 4; i++) {
+                var btn = document.getElementById('btn-' + i);
+                if (btn) {
+                    btn.classList.remove('active');
+                }
+            }
+            // クリックされたボタンにactiveクラスを追加
+            var activeBtn = document.getElementById('btn-' + index);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            }
+        }
+
+        // changeDuration関数を更新
+        var originalChangeDuration = changeDuration;
+        changeDuration = function(s) {
+            originalChangeDuration(s);
+            setActiveButton(s);
+        };
+
+        // 初期化時にアクティブボタンを設定
+        window.addEventListener('load', function() {
+            setActiveButton(0);
+        });
+    </script>
 </body>
 
 

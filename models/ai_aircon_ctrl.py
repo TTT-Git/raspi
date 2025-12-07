@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from pigpios.ir_ctrl import Aircon
-from models.base import factory_temp_humid_class
+from models.base import factory_temp_humid_class, AirconState
 import settings
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,17 @@ class Ai(object):
                         self.aircon.heater(self.heater_setting_temp, fan='auto')
                     else:
                         self.aircon.heater(self.heater_setting_temp, fan='low')
+        # エアコンの状態をデータベースに保存
+        mode = 'heater' if self.heater_mode else 'cooler'
+        setting_temp = self.heater_setting_temp if self.heater_mode else self.cooler_setting_temp
+        AirconState.create(
+            time=self.data_time,
+            mode=mode,
+            setting_temp=setting_temp,
+            heater_setting_temp=self.heater_setting_temp,
+            cooler_setting_temp=self.cooler_setting_temp
+        )
+        
         logger.info({
             'action': 'ctrl_temp',
             'status': 'nomal',

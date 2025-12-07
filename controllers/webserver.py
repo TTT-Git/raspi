@@ -7,6 +7,7 @@ from flask import request
 import logging
 
 from models.df_temp_humid import DataFrameTempHumid
+from models.base import AirconState
 
 import settings
 
@@ -71,6 +72,36 @@ def api_make_handler():
     return jsonify(df.value), 200
 
 
+@app.route('/api/latest/', methods=['GET'])
+def api_latest_handler():
+    """
+    最新データのタイムスタンプを返す
+    """
+    hostname = request.args.get('hostname')
+    if not hostname:
+        return jsonify({'error': 'No hostname params'}), 400
+    
+    device_num_str = request.args.get('device_num')
+    if device_num_str:
+        device_num = int(device_num_str)
+    else:
+        device_num = 0
+    
+    df = DataFrameTempHumid(hostname, device_num)
+    latest = df.temp_humid_cls.latest_record()
+    
+    if latest:
+        return jsonify({
+            'latest_time': latest.time.isoformat(),
+            'hostname': hostname,
+            'device_num': device_num
+        }), 200
+    else:
+        return jsonify({
+            'latest_time': None,
+            'hostname': hostname,
+            'device_num': device_num
+        }), 200
 
 
 def start():
