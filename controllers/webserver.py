@@ -68,8 +68,17 @@ def api_make_handler():
     now = datetime.now()
     time = now - timedelta(hours=term_hour)
     df.set_data_after_time(time)
+    
+    # エアコンの状態を取得
+    aircon_states = AirconState.get_data_after_time(time)
+    aircon_data = []
+    if aircon_states:
+        aircon_data = [state.value for state in aircon_states]
+    
+    result = df.value
+    result['aircon'] = aircon_data
 
-    return jsonify(df.value), 200
+    return jsonify(result), 200
 
 
 @app.route('/api/latest/', methods=['GET'])
