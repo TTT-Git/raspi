@@ -70,6 +70,11 @@
             height: 300px;
         }
 
+        #co2_chart {
+            width: 100%;
+            height: 300px;
+        }
+
         .aircon-chart-card {
             display: none;
         }
@@ -163,6 +168,10 @@
                 height: 250px;
             }
 
+            #co2_chart {
+                height: 250px;
+            }
+
             button {
                 padding: 10px 18px;
                 font-size: 14px;
@@ -222,10 +231,12 @@
 
         var chart = null;  // グラフオブジェクトを保持
         var airconChart = null;  // エアコングラフオブジェクトを保持
+        var co2Chart = null;  // CO2グラフオブジェクトを保持
         var lastUpdateTime = null;
         var currentParams = params;
         var sharedTimeRange = null;  // 共有する時間範囲
         var sharedChartArea = null;  // 共有するグラフエリア設定
+        var humid = 0;  // 0: 温度, 1: 湿度
 
         function drawChart(dataTable) {
             if (!dataTable || dataTable.getNumberOfRows() === 0) {
@@ -386,6 +397,9 @@
                 } else {
                     document.querySelector('.aircon-chart-card').style.display = 'none';
                 }
+                
+                // CO2濃度グラフ
+                drawCo2Chart(data["temp_humid"]);
             })
         }
 
@@ -501,6 +515,122 @@
             }
         }
 
+        function drawCo2Chart(temp_humid_data) {
+            if (!temp_humid_data || temp_humid_data.length === 0) {
+                return;
+            }
+
+            var chartContainer = document.getElementById('co2_chart');
+            if (!chartContainer) {
+                return;
+            }
+
+            // 温度グラフと同じ幅を取得
+            var tempChartContainer = document.getElementById('curve_chart');
+            var containerWidth = (tempChartContainer ? tempChartContainer.offsetWidth : chartContainer.offsetWidth) || 900;
+            
+            var co2DataTable = new google.visualization.DataTable();
+            co2DataTable.addColumn('date', '時刻');
+            co2DataTable.addColumn('number', 'CO2濃度');
+            
+            var co2ChartData = [];
+            
+            for(var k = 0; k < temp_humid_data.length; k++) {
+                var temp_humid = temp_humid_data[k];
+                if (temp_humid.co2_ppm === null || temp_humid.co2_ppm === undefined) {
+                    continue;  // CO2データがない場合はスキップ
+                }
+                var co2Date = new Date(temp_humid.time);
+                co2Date.setHours(co2Date.getHours() - 9);
+                
+                co2ChartData.push([co2Date, temp_humid.co2_ppm]);
+            }
+            
+            if (co2ChartData.length === 0) {
+                // CO2データがない場合はグラフを非表示
+                document.querySelector('.co2-chart-card').style.display = 'none';
+                return;
+            }
+            
+            // CO2データがある場合はグラフを表示
+            document.querySelector('.co2-chart-card').style.display = 'block';
+            
+            co2DataTable.addRows(co2ChartData);
+            
+            // 横軸の設定を温度グラフと完全に揃える
+            var hAxisOptions = {
+                title: '',
+                textStyle: {
+                    color: '#86868b',
+                    fontName: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    fontSize: 12
+                },
+                gridlines: {
+                    color: 'transparent'
+                },
+                format: 'MM/dd HH:mm',
+                slantedText: false
+            };
+            
+            // 時間範囲を設定（温度グラフと同じ範囲）
+            if (sharedTimeRange) {
+                hAxisOptions.viewWindow = {
+                    min: sharedTimeRange.min,
+                    max: sharedTimeRange.max
+                };
+            }
+            
+            var options = {
+                chart: {
+                    title: '',
+                    subtitle: ''
+                },
+                width: containerWidth,
+                height: 300,
+                hAxis: hAxisOptions,
+                vAxis: {
+                    title: '',
+                    textStyle: {
+                        color: '#86868b',
+                        fontName: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        fontSize: 12
+                    },
+                    gridlines: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                },
+                legend: {
+                    position: 'none'  // 凡例を非表示
+                },
+                colors: ['#34c759'],  // CO2: 緑
+                backgroundColor: 'transparent',
+                chartArea: sharedChartArea || {
+                    left: 60,
+                    right: 80,
+                    top: 20,
+                    bottom: 60
+                }
+            };
+            
+            // Google Chartsが読み込まれているか確認
+            if (typeof google === 'undefined' || !google.charts || !google.visualization) {
+                console.error('Google Chartsが読み込まれていません');
+                return;
+            }
+            
+            // 既存のグラフがあれば再利用、なければ新規作成
+            if (!co2Chart) {
+                co2Chart = new google.charts.Line(document.getElementById('co2_chart'));
+            }
+            
+            // グラフを更新（消さずに更新）
+            try {
+                co2Chart.draw(co2DataTable, google.charts.Line.convertOptions(options));
+            } catch (error) {
+                console.error('CO2グラフの描画エラー:', error);
+            }
+        }
+
         function checkForUpdates() {
             // 最新データのタイムスタンプをチェック
             $.get("/api/latest", {
@@ -599,6 +729,10 @@
 
         <div class="chart-card aircon-chart-card">
             <div id="aircon_chart"></div>
+        </div>
+
+        <div class="chart-card co2-chart-card">
+            <div id="co2_chart"></div>
         </div>
 
         <div class="controls">
