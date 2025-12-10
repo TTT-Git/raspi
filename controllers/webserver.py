@@ -76,6 +76,32 @@ def api_make_handler():
         aircon_data = [state.value for state in aircon_states]
     
     result = df.value
+    
+    # 異常な温度・湿度値をフィルタリング（既存データベースに異常値が入っている場合に対応）
+    filtered_temp_humid = []
+    for data in result['temp_humid']:
+        # 温度が-50度〜60度の範囲内、湿度が0〜100%の範囲内のデータのみを含める
+        temp = data.get('temperature')
+        humid = data.get('humidity')
+        if temp is not None and (temp < -50 or temp > 60):
+            logger.warning({
+                'action': 'api_make_handler',
+                'status': 'filtered_invalid_data',
+                'message': f'異常な温度値をフィルタリングしました',
+                'data': f'time: {data.get("time")}, temperature: {temp}, hostname: {hostname}'
+            })
+            continue
+        if humid is not None and (humid < 0 or humid > 100):
+            logger.warning({
+                'action': 'api_make_handler',
+                'status': 'filtered_invalid_data',
+                'message': f'異常な湿度値をフィルタリングしました',
+                'data': f'time: {data.get("time")}, humidity: {humid}, hostname: {hostname}'
+            })
+            continue
+        filtered_temp_humid.append(data)
+    
+    result['temp_humid'] = filtered_temp_humid
     result['aircon'] = aircon_data
 
     return jsonify(result), 200

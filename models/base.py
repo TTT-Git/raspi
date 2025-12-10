@@ -51,6 +51,30 @@ class BaseTempHumidMixin(object):
 
     @classmethod
     def create(cls, time, temperature, humidity, co2_ppm, meas_position, hostname):
+        # 温度のバリデーション: -50度〜60度の範囲外は異常値として保存しない
+        if temperature is not None and (temperature < -50 or temperature > 60):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning({
+                'action': 'create',
+                'status': 'validation_error',
+                'message': f'異常な温度値が検出されました。保存をスキップします。',
+                'data': f'time: {time}, temperature: {temperature}, hostname: {hostname}, meas_position: {meas_position}'
+            })
+            return False
+        
+        # 湿度のバリデーション: 0〜100%の範囲外は異常値として保存しない
+        if humidity is not None and (humidity < 0 or humidity > 100):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning({
+                'action': 'create',
+                'status': 'validation_error',
+                'message': f'異常な湿度値が検出されました。保存をスキップします。',
+                'data': f'time: {time}, humidity: {humidity}, hostname: {hostname}, meas_position: {meas_position}'
+            })
+            return False
+        
         temp_humid_data = cls(time=time,
                      temperature=temperature,
                      humidity=humidity,
