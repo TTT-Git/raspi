@@ -8,6 +8,7 @@ import logging
 
 from models.df_temp_humid import DataFrameTempHumid
 from models.base import AirconState
+from controllers.aircon_stream import aircon_stream
 
 import settings
 
@@ -137,6 +138,95 @@ def api_latest_handler():
             'hostname': hostname,
             'device_num': device_num
         }), 200
+
+
+@app.route('/api/aircon/stop/', methods=['POST'])
+def api_aircon_stop():
+    """
+    エアコンをオフにして、温度制御を停止する
+    """
+    try:
+        aircon_stream.stop_aircon()
+        status = aircon_stream.get_status()
+        logger.info({
+            'action': 'api_aircon_stop',
+            'status': 'success',
+            'message': 'エアコン制御を停止しました'
+        })
+        return jsonify({
+            'success': True,
+            'message': 'エアコン制御を停止しました',
+            'status': status
+        }), 200
+    except Exception as e:
+        logger.error({
+            'action': 'api_aircon_stop',
+            'status': 'error',
+            'message': str(e)
+        })
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/aircon/start/', methods=['POST'])
+def api_aircon_start():
+    """
+    エアコンの温度制御を開始する
+    """
+    try:
+        result = aircon_stream.start_aircon()
+        if result:
+            status = aircon_stream.get_status()
+            logger.info({
+                'action': 'api_aircon_start',
+                'status': 'success',
+                'message': 'エアコン制御を開始しました'
+            })
+            return jsonify({
+                'success': True,
+                'message': 'エアコン制御を開始しました',
+                'status': status
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'エアコン制御は既に実行中です'
+            }), 400
+    except Exception as e:
+        logger.error({
+            'action': 'api_aircon_start',
+            'status': 'error',
+            'message': str(e)
+        })
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/aircon/status/', methods=['GET'])
+def api_aircon_status():
+    """
+    エアコン制御の状態を取得する
+    """
+    try:
+        status = aircon_stream.get_status()
+        return jsonify({
+            'success': True,
+            'status': status
+        }), 200
+    except Exception as e:
+        logger.error({
+            'action': 'api_aircon_status',
+            'status': 'error',
+            'message': str(e)
+        })
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 def start():

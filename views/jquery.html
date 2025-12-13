@@ -760,6 +760,14 @@
                     <button onclick="changeTimeRange(72);" id="btn-time-72">72時間</button>
                 </div>
             </div>
+            <div class="control-group">
+                <label>エアコン制御</label>
+                <div class="button-group">
+                    <button onclick="stopAircon();" id="btn-aircon-stop">エアコン停止</button>
+                    <button onclick="startAircon();" id="btn-aircon-start">エアコン開始</button>
+                </div>
+                <div id="aircon-status" style="margin-top: 10px; font-size: 13px; color: #86868b;"></div>
+            </div>
         </div>
     </div>
 
@@ -804,10 +812,71 @@
             setActiveButton(s);
         };
 
+        // エアコン制御関数
+        function stopAircon() {
+            $.ajax({
+                url: '/api/aircon/stop/',
+                method: 'POST',
+                success: function(data) {
+                    if (data.success) {
+                        updateAirconStatus(data.status);
+                        alert('エアコンを停止しました');
+                    } else {
+                        alert('エラー: ' + (data.error || '不明なエラー'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('エラーが発生しました: ' + error);
+                }
+            });
+        }
+
+        function startAircon() {
+            $.ajax({
+                url: '/api/aircon/start/',
+                method: 'POST',
+                success: function(data) {
+                    if (data.success) {
+                        updateAirconStatus(data.status);
+                        alert('エアコン制御を開始しました');
+                    } else {
+                        alert('エラー: ' + (data.error || '不明なエラー'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('エラーが発生しました: ' + error);
+                }
+            });
+        }
+
+        function updateAirconStatus(status) {
+            var statusElement = document.getElementById('aircon-status');
+            if (status && statusElement) {
+                if (status.is_running) {
+                    statusElement.textContent = '状態: 実行中';
+                    statusElement.style.color = '#34c759';
+                } else {
+                    statusElement.textContent = '状態: 停止中';
+                    statusElement.style.color = '#ff3b30';
+                }
+            }
+        }
+
+        function checkAirconStatus() {
+            $.get('/api/aircon/status/').done(function(data) {
+                if (data.success && data.status) {
+                    updateAirconStatus(data.status);
+                }
+            });
+        }
+
         // 初期化時にアクティブボタンを設定
         window.addEventListener('load', function() {
             setActiveButton(0);
             setActiveTimeRangeButton(24);  // デフォルトは24時間
+            checkAirconStatus();  // エアコン状態を取得
+            // 定期的にエアコン状態を更新（30秒ごと）
+            setInterval(checkAirconStatus, 30000);
         });
     </script>
 </body>
