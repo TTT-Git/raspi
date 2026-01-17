@@ -365,6 +365,27 @@
                 
                 lastUpdateTime = latestTime;
 
+                // update top banner with latest measurements
+                try {
+                    var latestTemp = latest.temperature;
+                    var latestHum = latest.humidity;
+                    var latestCo2 = latest.co2_ppm;
+                    var airconText = '—';
+                    if (data["aircon"] && data["aircon"].length > 0) {
+                        var lastAir = data["aircon"][data["aircon"].length -1];
+                        if (lastAir.mode === 'heater') {
+                            airconText = '暖房 ' + (lastAir.heater_setting_temp !== null ? lastAir.heater_setting_temp + '°C' : '');
+                        } else if (lastAir.mode === 'cooler') {
+                            airconText = '冷房 ' + (lastAir.cooler_setting_temp !== null ? lastAir.cooler_setting_temp + '°C' : '');
+                        } else if (lastAir.mode === 'off') {
+                            airconText = '停止';
+                        }
+                    }
+                    setTopStatus(latestTemp, latestHum, latestCo2, airconText);
+                } catch(e) {
+                    console.warn('top status update failed', e);
+                }
+
                 var dataTable = new google.visualization.DataTable();
                 dataTable.addColumn('date', 'Date');
                 dataTable.addColumn('number', data["temp_humid"][0].meas_position);
@@ -631,6 +652,17 @@
             }
         }
 
+        function setTopStatus(temp, humid, co2, airconText) {
+            var elTemp = document.getElementById('top-temp');
+            var elHum = document.getElementById('top-humid');
+            var elCo2 = document.getElementById('top-co2');
+            var elAir = document.getElementById('top-aircon');
+            if (elTemp) elTemp.textContent = '温度: ' + (temp !== undefined && temp !== null ? (Math.round(temp*10)/10) + ' °C' : '—');
+            if (elHum) elHum.textContent = '湿度: ' + (humid !== undefined && humid !== null ? (Math.round(humid*10)/10) + ' %' : '—');
+            if (elCo2) elCo2.textContent = 'CO2: ' + (co2 !== undefined && co2 !== null ? co2 + ' ppm' : '—');
+            if (elAir) elAir.textContent = 'エアコン: ' + (airconText || '—');
+        }
+
         function checkForUpdates() {
             // 最新データのタイムスタンプをチェック
             $.get("/api/latest", {
@@ -721,6 +753,13 @@
         <div class="header">
             <h1>温度・湿度モニター</h1>
             <p>リアルタイム環境データ</p>
+        </div>
+
+        <div id="top-status" style="margin-bottom:20px; font-size:16px; display:flex; gap:20px; justify-content:center;">
+            <div id="top-temp">温度: — °C</div>
+            <div id="top-humid">湿度: — %</div>
+            <div id="top-co2">CO2: — ppm</div>
+            <div id="top-aircon">エアコン: —</div>
         </div>
 
         <div class="chart-card">
