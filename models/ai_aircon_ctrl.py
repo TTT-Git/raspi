@@ -56,13 +56,25 @@ class Ai(object):
         temp_humid_data_list = [temp_humid_data.value for temp_humid_data in temp_humid_datas]
         df = pd.DataFrame(temp_humid_data_list)
 
+        # データが無い場合は処理を中断（しばらく待って再実行する上位ループに任せる）
+        if df.empty:
+            logger.warning({'action':'get_temp','status':'no_data','message':'no temp data available, skipping control'})
+            self.temperature = None
+            self.current_temp = None
+            self.data_time = now
+            return
+
         # 時間と温度のデータ
         time = (df['time'] - df.loc[0,'time']).apply(lambda t:t.seconds).values # ここに時間のデータを入力
         temp = df['temperature'].values # ここに温度のデータを入力
 
         # フィッティング
         #1次式
-        coef_1 = np.polyfit(time,temp,1) #係数
+        if len(temp) == 1:
+            # データが1点しかない場合は定数近似を使う
+            coef_1 = np.array([0.0, float(temp[0])])
+        else:
+            coef_1 = np.polyfit(time,temp,1) #係数
         predict_time = 180 + (now - df.loc[0,'time']).seconds
 
         # 積分項
@@ -83,6 +95,10 @@ class Ai(object):
 
     def ctrl_temp(self):
         self.get_temp()
+        # get_tempがデータ不足で終了した場合は処理を行わず待機する
+        if self.temperature is None:
+            logger.warning({'action': 'ctrl_temp', 'status': 'no_data', 'message': 'No temperature data available - skipping control'})
+            return
         gap_temp = abs(self.temperature - self.target_temp)
         current_mode = 'heater' if self.heater_mode else 'cooler'
         
