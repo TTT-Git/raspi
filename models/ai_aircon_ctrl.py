@@ -34,7 +34,11 @@ class Ai(object):
         # 初期値
         self.heater_mode = settings.heater_mote_initial_setting
         self.heater_setting_temp = math.floor(self.target_temp) 
-        self.cooler_setting_temp = math.ceil(self.target_temp) 
+        self.cooler_setting_temp = math.ceil(self.target_temp)
+        # モード切り替え待機状態の管理
+        self.mode_switch_pending = False  # モード切り替え待機中かどうか
+        self.prev_mode = 'heater' if self.heater_mode else 'cooler'  # 前回のモード
+        self.current_temp = None  # 現在の実測温度（予測温度と比較用） 
 
     def get_temp(self):
         temp_humid_cls = factory_temp_humid_class(self.hostname, self.device_num)
@@ -70,15 +74,116 @@ class Ai(object):
         corr = df2['temperature'].mean() - settings.target_temp
         corr = 0
 
-        self.temperature = coef_1[0]*predict_time+ coef_1[1] + corr #フィッティング関数
+        self.temperature = coef_1[0]*predict_time+ coef_1[1] + corr #フィッティング関数（3分後の予測温度）
+        self.current_temp = temp[-1]  # 現在の実測温度（最新のデータ）
         self.data_time = now
-        print(f"time:{self.data_time}, predict_temp:{self.temperature}, corr:{corr} temp_now:{temp[-1]}" )
+        print(f"time:{self.data_time}, predict_temp:{self.temperature}, corr:{corr} temp_now:{self.current_temp}" )
         print(df)
         print(time, temp)
 
     def ctrl_temp(self):
         self.get_temp()
         gap_temp = abs(self.temperature - self.target_temp)
+        current_mode = 'heater' if self.heater_mode else 'cooler'
+        
+        # モード切り替え待機中の処理（改善点6: モード切り替え時の制御）
+        if self.mode_switch_pending:
+            # 既存の予測システム（self.temperatureは3分後の予測温度）を使って判断
+            
+            if self.prev_mode == 'heater':
+                # 暖房→冷房の切り替え待機中
+                if self.temperature > self.temp_upper_limit:
+                    # 予測温度が上限を超えそう → 冷房に切り替え
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch',
+                        'message': f'暖房→冷房: 予測温度が上限を超えそう（予測: {self.temperature:.2f}度）のため冷房に切り替え',
+                        'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
+                    })
+                    self.cooler_setting_temp = self.cooler_setting_upper_limit
+                    self.aircon.cooler(temp=self.cooler_setting_temp, fan='low')
+                    self.heater_mode = False
+                    self.mode_switch_pending = False
+                    self.prev_mode = 'cooler'
+                elif self.temperature < self.temp_lower_limit:
+                    # 予測温度が下限を下回りそう → 暖房に切り替え
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch',
+                        'message': f'暖房→暖房: 予測温度が下限を下回りそう（予測: {self.temperature:.2f}度）のため暖房を継続',
+                        'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
+                    })
+                    self.heater_setting_temp = self.heater_setting_lower_limit
+                    self.aircon.heater(self.heater_setting_temp, fan='low')
+                    self.heater_mode = True
+                    self.mode_switch_pending = False
+                    self.prev_mode = 'heater'
+                else:
+                    # 予測温度が範囲内でキープされそう → OFFを継続
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch',
+                        'message': f'暖房→OFF継続: 予測温度が安定（予測: {self.temperature:.2f}度）',
+                        'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
+                    })
+                    self.aircon.off()
+                    # オフ状態をデータベースに保存
+                    AirconState.create(
+                        time=self.data_time,
+                        mode='off',
+                        setting_temp=None,
+                        heater_setting_temp=self.heater_setting_temp,
+                        cooler_setting_temp=self.cooler_setting_temp
+                    )
+                    return
+            
+            elif self.prev_mode == 'cooler':
+                # 冷房→暖房の切り替え待機中
+                if self.temperature < self.temp_lower_limit:
+                    # 予測温度が下限を下回りそう → 暖房に切り替え
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch',
+                        'message': f'冷房→暖房: 予測温度が下限を下回りそう（予測: {self.temperature:.2f}度）のため暖房に切り替え',
+                        'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
+                    })
+                    self.heater_setting_temp = self.heater_setting_lower_limit
+                    self.aircon.heater(self.heater_setting_temp, fan='low')
+                    self.heater_mode = True
+                    self.mode_switch_pending = False
+                    self.prev_mode = 'heater'
+                elif self.temperature > self.temp_upper_limit:
+                    # 予測温度が上限を超えそう → 冷房に切り替え
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch',
+                        'message': f'冷房→冷房: 予測温度が上限を超えそう（予測: {self.temperature:.2f}度）のため冷房を継続',
+                        'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
+                    })
+                    self.cooler_setting_temp = self.cooler_setting_upper_limit
+                    self.aircon.cooler(temp=self.cooler_setting_temp, fan='low')
+                    self.heater_mode = False
+                    self.mode_switch_pending = False
+                    self.prev_mode = 'cooler'
+                else:
+                    # 予測温度が範囲内でキープされそう → OFFを継続
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch',
+                        'message': f'冷房→OFF継続: 予測温度が安定（予測: {self.temperature:.2f}度）',
+                        'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
+                    })
+                    self.aircon.off()
+                    # オフ状態をデータベースに保存
+                    AirconState.create(
+                        time=self.data_time,
+                        mode='off',
+                        setting_temp=None,
+                        heater_setting_temp=self.heater_setting_temp,
+                        cooler_setting_temp=self.cooler_setting_temp
+                    )
+                    return
+        
         if self.temperature > self.temp_upper_limit:
             """
             今の気温が、上限値より高い時、
@@ -93,10 +198,27 @@ class Ai(object):
                     if self.heater_setting_temp < self.heater_setting_lower_limit:
                         self.heater_setting_temp = self.heater_setting_lower_limit
                     self.aircon.heater(self.heater_setting_temp, fan='low')
+                    self.prev_mode = 'heater'
                 else: 
-                    self.cooler_setting_temp = self.cooler_setting_upper_limit
-                    self.aircon.cooler(temp=self.cooler_setting_temp, fan='low')
-                    self.heater_mode = False
+                    # 暖房→冷房の切り替えが必要な場合、一度オフにして待機状態にする
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch_init',
+                        'message': '暖房→冷房切り替え: 一度オフにして温度変化を観察',
+                        'data': f'temp: {self.temperature}, heater_setting: {self.heater_setting_temp}'
+                    })
+                    self.aircon.off()
+                    self.mode_switch_pending = True
+                    self.prev_mode = 'heater'
+                    # オフ状態をデータベースに保存
+                    AirconState.create(
+                        time=self.data_time,
+                        mode='off',
+                        setting_temp=None,
+                        heater_setting_temp=self.heater_setting_temp,
+                        cooler_setting_temp=self.cooler_setting_temp
+                    )
+                    return
             else:
                 if self.cooler_setting_temp != self.cooler_setting_lower_limit:
                     self.cooler_setting_temp = self.cooler_setting_temp - math.ceil(gap_temp)
@@ -106,6 +228,7 @@ class Ai(object):
                         self.aircon.cooler(self.cooler_setting_temp, fan='auto')
                     else:
                         self.aircon.cooler(self.cooler_setting_temp, fan='low')
+                    self.prev_mode = 'cooler'
   
         elif self.temperature < self.temp_lower_limit:
             """
@@ -121,10 +244,27 @@ class Ai(object):
                     if self.cooler_setting_temp > self.cooler_setting_upper_limit:
                         self.cooler_setting_temp = self.cooler_setting_upper_limit
                     self.aircon.cooler(self.cooler_setting_temp, fan='low')
+                    self.prev_mode = 'cooler'
                 else:
-                    self.heater_setting_temp = self.heater_setting_lower_limit
-                    self.aircon.heater(self.heater_setting_temp, fan='low')
-                    self.heater_mode = True
+                    # 冷房→暖房の切り替えが必要な場合、一度オフにして待機状態にする
+                    logger.info({
+                        'action': 'ctrl_temp',
+                        'status': 'mode_switch_init',
+                        'message': '冷房→暖房切り替え: 一度オフにして温度変化を観察',
+                        'data': f'temp: {self.temperature}, cooler_setting: {self.cooler_setting_temp}'
+                    })
+                    self.aircon.off()
+                    self.mode_switch_pending = True
+                    self.prev_mode = 'cooler'
+                    # オフ状態をデータベースに保存
+                    AirconState.create(
+                        time=self.data_time,
+                        mode='off',
+                        setting_temp=None,
+                        heater_setting_temp=self.heater_setting_temp,
+                        cooler_setting_temp=self.cooler_setting_temp
+                    )
+                    return
             else:
                 if self.heater_setting_temp != self.heater_setting_upper_limit:
                     self.heater_setting_temp = self.heater_setting_temp + math.ceil(gap_temp)
@@ -134,6 +274,7 @@ class Ai(object):
                         self.aircon.heater(self.heater_setting_temp, fan='auto')
                     else:
                         self.aircon.heater(self.heater_setting_temp, fan='low')
+                    self.prev_mode = 'heater'
         # エアコンの状態をデータベースに保存
         mode = 'heater' if self.heater_mode else 'cooler'
         setting_temp = self.heater_setting_temp if self.heater_mode else self.cooler_setting_temp

@@ -24,40 +24,31 @@ class Raspi(object):
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             # ssh接続する
-            try:
-                ssh.connect(
-                    hostname=self.hostname, 
-                    username=self.username,
-                    key_filename=self.key_filename
-                    )
-                # コマンドの実行
-                stdin, stdout, stderr = ssh.exec_command(CMD)
-                return stdout.readlines()
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    ssh.connect(
+                        hostname=self.hostname, 
+                        username=self.username,
+                        key_filename=self.key_filename
+                        )
+                    # コマンドの実行
+                    stdin, stdout, stderr = ssh.exec_command(CMD)
+                    return stdout.readlines()
 
-            except socket.gaierror as e:
-                logger.error({
-                        'action': 'ssh connect',
-                        'status': 'socket.gaierror',
-                        'message': f'error message: {e}',
-                        'data': f"hostname={self.hostname}, username={self.username}, key_filename={self.key_filename}"
-                    })
-                return None
-            except ValueError as e:
-                logger.error({
-                        'action': 'ssh connect',
-                        'status': 'ValueError',
-                        'message': f'error message: {e}',
-                        'data': f"hostname={self.hostname}, username={self.username}, key_filename={self.key_filename}"
-                    })
-                return None
-            except paramiko.ssh_exception.SSHException as e:
-                logger.error({
-                        'action': 'ssh connect',
-                        'status': 'paramiko.ssh_exception.SSHException',
-                        'message': f'error message: {e}',
-                        'data': f"hostname={self.hostname}, username={self.username}, key_filename={self.key_filename}"
-                    })
-                return None
+                except (socket.gaierror, socket.timeout, OSError, ConnectionResetError, ValueError, paramiko.ssh_exception.NoValidConnectionsError, paramiko.ssh_exception.SSHException) as e:
+                    logger.error({
+                            'action': 'ssh connect',
+                            'status': 'socket_error',
+                            'attempt': attempt,
+                            'message': f'error message: {e}',
+                            'data': f"hostname={self.hostname}, username={self.username}, key_filename={self.key_filename}"
+                        })
+                    if attempt < max_attempts:
+                        import time
+                        time.sleep(1)
+                        continue
+                    return None
             
     
 
