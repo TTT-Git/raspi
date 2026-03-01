@@ -142,7 +142,7 @@ class Ai(object):
                         'message': f'暖房→OFF継続: 予測温度が安定（予測: {self.temperature:.2f}度）',
                         'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
                     })
-                    self.aircon.off()
+                    self.aircon.heater_off()
                     # オフ状態をデータベースに保存
                     AirconState.create(
                         time=self.data_time,
@@ -189,7 +189,7 @@ class Ai(object):
                         'message': f'冷房→OFF継続: 予測温度が安定（予測: {self.temperature:.2f}度）',
                         'data': f'predict_temp: {self.temperature}, current_temp: {self.current_temp}'
                     })
-                    self.aircon.off()
+                    self.aircon.cooler_off()
                     # オフ状態をデータベースに保存
                     AirconState.create(
                         time=self.data_time,
