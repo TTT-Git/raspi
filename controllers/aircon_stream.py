@@ -34,11 +34,16 @@ class AirconStream(object):
     
     def start_aircon(self):
         """エアコン制御を開始する（新しいスレッドで実行）"""
-        # 既に実行中で、かつ停止フラグが立っていない場合はエラー
-        if self.is_running and not self.stop:
+        # 既に実行中で、かつ停止フラグが立っていない場合はエラー（スレッド生存を確認）
+        if self.is_running and self.thread and self.thread.is_alive() and not self.stop:
             logger.warning("Aircon control is already running")
             return False
-        
+        # is_running が True だがスレッドが死んでいる場合は状態をリセットして再起動を許可
+        if self.is_running and (not self.thread or not self.thread.is_alive()):
+            logger.warning("is_running flag set but thread not alive; resetting state")
+            self.is_running = False
+            self.stop = False
+
         # 以前のスレッドが残っている場合は待機
         if self.thread and self.thread.is_alive():
             logger.info("Waiting for previous thread to finish...")
