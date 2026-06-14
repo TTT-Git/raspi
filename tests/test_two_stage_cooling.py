@@ -68,6 +68,7 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
         self.assertEqual(decision.median_temperature, 27.0)
         self.assertEqual(decision.next_state, CoolingState.RECOVERY_COOLING)
         self.assertTrue(decision.should_change)
+        self.assertTrue(decision.action_required)
         self.assertEqual(decision.recommended_cooler_temp, 24.0)
         self.assertEqual(decision.reason, 'recovery_started')
         self.assertEqual(decision.recovery_started_at, self.now)
@@ -91,6 +92,7 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
         self.assertEqual(decision.median_temperature, 26.9)
         self.assertEqual(decision.next_state, CoolingState.STABLE_COOLING)
         self.assertFalse(decision.should_change)
+        self.assertTrue(decision.action_required)
         self.assertEqual(decision.reason, 'stable_started')
 
     def test_force_recovery_allows_future_manual_recovery_start(self):
@@ -103,6 +105,7 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
 
         self.assertEqual(decision.next_state, CoolingState.RECOVERY_COOLING)
         self.assertTrue(decision.should_change)
+        self.assertTrue(decision.action_required)
         self.assertEqual(decision.recommended_cooler_temp, 24.0)
         self.assertEqual(decision.reason, 'recovery_forced')
 
@@ -117,6 +120,7 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
 
         self.assertEqual(decision.next_state, CoolingState.RECOVERY_COOLING)
         self.assertFalse(decision.should_change)
+        self.assertFalse(decision.action_required)
         self.assertEqual(decision.recommended_cooler_temp, 24.0)
         self.assertEqual(decision.reason, 'recovery_holding')
 
@@ -201,6 +205,7 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
         ))
 
         self.assertFalse(decision.should_change)
+        self.assertFalse(decision.action_required)
         self.assertEqual(decision.reason, 'within_deadband')
         self.assertIsNone(decision.consecutive_direction)
         self.assertEqual(decision.consecutive_count, 0)
@@ -272,6 +277,7 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
             low_prediction.log_data['predicted_temperature'],
             20.0,
         )
+        self.assertFalse(low_prediction.log_data['action_required'])
         self.assertEqual(
             high_prediction.log_data['predicted_temperature'],
             35.0,

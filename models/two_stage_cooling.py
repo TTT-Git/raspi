@@ -87,6 +87,7 @@ class CoolingControlInput:
 class CoolingDecision:
     next_state: CoolingState
     should_change: bool
+    action_required: bool
     recommended_cooler_temp: float
     reason: str
     median_temperature: float
@@ -114,6 +115,7 @@ class CoolingDecision:
             ),
             'recommended_cooler_temp': self.recommended_cooler_temp,
             'should_change': self.should_change,
+            'action_required': self.action_required,
             'reason': self.reason,
             'predicted_temperature': self.predicted_temperature,
         }
@@ -171,6 +173,7 @@ class TwoStageCoolingController:
                 control_input=control_input,
                 next_state=CoolingState.RECOVERY_COOLING,
                 should_change=should_change,
+                action_required=True,
                 recommended_cooler_temp=recommended,
                 reason=reason,
                 median_temperature=median_temperature,
@@ -186,6 +189,7 @@ class TwoStageCoolingController:
             control_input=control_input,
             next_state=CoolingState.STABLE_COOLING,
             should_change=False,
+            action_required=True,
             recommended_cooler_temp=control_input.current_cooler_temp,
             reason='stable_started',
             median_temperature=median_temperature,
@@ -324,6 +328,7 @@ class TwoStageCoolingController:
         recommended_cooler_temp,
         reason,
         median_temperature,
+        action_required=None,
         consecutive_direction=None,
         consecutive_count=0,
         last_change_at=_UNSET,
@@ -332,6 +337,11 @@ class TwoStageCoolingController:
         return CoolingDecision(
             next_state=next_state,
             should_change=should_change,
+            action_required=(
+                should_change
+                if action_required is None
+                else action_required
+            ),
             recommended_cooler_temp=recommended_cooler_temp,
             reason=reason,
             median_temperature=median_temperature,
