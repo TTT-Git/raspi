@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest import mock
 
 from controllers.aircon_control_runner import AirconCoolingCommandSender
+from controllers.aircon_control_runner import AirconStateRecorder
 from controllers.aircon_control_runner import create_control_runner
 from controllers.aircon_control_runner import LEGACY_MODE
 from controllers.aircon_control_runner import LegacyControlRunner
@@ -106,6 +107,22 @@ class FakeCommandSender:
         return self.result
 
 
+class FakeStateRecorder:
+    def __init__(self, result=True, error=None):
+        self.result = result
+        self.error = error
+        self.calls = []
+
+    def record_cooling(self, time, cooler_temp):
+        self.calls.append({
+            'time': time,
+            'cooler_temp': cooler_temp,
+        })
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
 class AirconControlModeTest(unittest.TestCase):
     def test_default_mode_is_legacy(self):
         self.assertEqual(
@@ -163,15 +180,21 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
 
     def test_factory_returns_one_legacy_runner(self):
         ai = DummyAi()
+        recorder = FakeStateRecorder()
         with mock.patch.dict(
             'os.environ',
             {'AIRCON_CONTROL_MODE': LEGACY_MODE},
             clear=False,
         ):
-            runner = create_control_runner(ai=ai)
+            runner = create_control_runner(
+                ai=ai,
+                state_recorder=recorder,
+            )
 
         self.assertIsInstance(runner, LegacyControlRunner)
         self.assertIs(runner.ai, ai)
+        runner.run_cycle()
+        self.assertEqual(recorder.calls, [])
 
     def test_legacy_runner_calls_existing_ai_and_stop(self):
         ai = DummyAi()
@@ -212,6 +235,7 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
     def test_factory_returns_real_runner_without_using_legacy_ai(self):
         ai = DummyAi()
         sender = FakeCommandSender(result=True)
+        recorder = FakeStateRecorder()
         with mock.patch.dict(
             'os.environ',
             {'AIRCON_CONTROL_MODE': TWO_STAGE_REAL_MODE},
@@ -221,6 +245,7 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
                 ai=ai,
                 temperature_provider=self._provider(27.5, 28.0),
                 command_sender=sender,
+                state_recorder=recorder,
             )
 
         self.assertIsInstance(runner, TwoStageCoolingRealRunner)
@@ -238,12 +263,17 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             sender.cooler_calls,
             [{'temp': 24.0, 'fan': 'auto'}],
         )
+        self.assertEqual(
+            recorder.calls,
+            [{'time': self.now, 'cooler_temp': 24.0}],
+        )
 
     def test_real_runner_commits_state_only_after_sender_success(self):
         runner = TwoStageCoolingRealRunner(
             self._provider(27.5, 28.0),
             FakeCommandSender(result=True),
             now_provider=lambda: self.now,
+            state_recorder=FakeStateRecorder(),
         )
 
         result = runner.run_cycle()
@@ -263,6 +293,7 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             self._provider(27.5, 28.0),
             FakeCommandSender(result=False),
             now_provider=lambda: self.now,
+            state_recorder=FakeStateRecorder(),
         )
         initial_state = runner.decision_runner.state
 
@@ -276,6 +307,7 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             self._provider(27.5, 28.0),
             FakeCommandSender(result=True),
             now_provider=lambda: self.now,
+            state_recorder=FakeStateRecorder(),
         )
 
         with self.assertLogs(
@@ -304,17 +336,136 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
         self.assertTrue(log_data['success'])
         self.assertFalse(log_data['simulated'])
 
-    def test_real_runner_does_not_record_aircon_state(self):
+    def test_real_runner_records_ensure_cooling_after_success(self):
+        recorder = FakeStateRecorder()
+        runner = TwoStageCoolingRealRunner(
+            self._provider(25.6, 25.8),
+            FakeCommandSender(result=True),
+            now_provider=lambda: self.now,
+            state_recorder=recorder,
+        )
+
+        result = runner.run_cycle()
+
+        self.assertEqual(
+            result.command.command_type.value,
+            'ensure_cooling',
+        )
+        self.assertEqual(
+            recorder.calls,
+            [{'time': self.now, 'cooler_temp': 26.0}],
+        )
+
+    def test_real_runner_records_changed_temperature_after_success(self):
+        recorder = FakeStateRecorder()
         runner = TwoStageCoolingRealRunner(
             self._provider(27.5, 28.0),
             FakeCommandSender(result=True),
             now_provider=lambda: self.now,
+            state_recorder=recorder,
         )
 
-        with mock.patch('models.base.AirconState.create') as create:
-            runner.run_cycle()
+        result = runner.run_cycle()
 
-        create.assert_not_called()
+        self.assertEqual(
+            result.command.command_type.value,
+            'set_cooler_temp',
+        )
+        self.assertEqual(
+            recorder.calls,
+            [{'time': self.now, 'cooler_temp': 24.0}],
+        )
+
+    def test_real_runner_records_current_temperature_after_noop(self):
+        recorder = FakeStateRecorder()
+        runner = TwoStageCoolingRealRunner(
+            self._provider(25.6, 25.8),
+            FakeCommandSender(result=True),
+            now_provider=lambda: self.now,
+            state_recorder=recorder,
+        )
+        runner.run_cycle()
+        recorder.calls.clear()
+        next_time = self.now + timedelta(minutes=3)
+        runner.now_provider = lambda: next_time
+        runner.temperature_provider = self._provider(25.6, 25.8)
+
+        result = runner.run_cycle()
+
+        self.assertEqual(result.command.command_type.value, 'noop')
+        self.assertEqual(
+            recorder.calls,
+            [{'time': next_time, 'cooler_temp': 26.0}],
+        )
+
+    def test_real_runner_does_not_record_after_adapter_failure(self):
+        recorder = FakeStateRecorder()
+        runner = TwoStageCoolingRealRunner(
+            self._provider(27.5, 28.0),
+            FakeCommandSender(result=False),
+            now_provider=lambda: self.now,
+            state_recorder=recorder,
+        )
+
+        result = runner.run_cycle()
+
+        self.assertFalse(result.command_result.success)
+        self.assertEqual(recorder.calls, [])
+
+    def test_real_runner_continues_after_recording_exception(self):
+        recorder = FakeStateRecorder(
+            error=RuntimeError('database failed')
+        )
+        runner = TwoStageCoolingRealRunner(
+            self._provider(27.5, 28.0),
+            FakeCommandSender(result=True),
+            now_provider=lambda: self.now,
+            state_recorder=recorder,
+        )
+
+        result = runner.run_cycle()
+
+        self.assertTrue(result.committed)
+        self.assertEqual(
+            runner.decision_runner.state.current_cooler_temp,
+            24.0,
+        )
+
+    def test_real_runner_continues_when_recording_returns_false(self):
+        recorder = FakeStateRecorder(result=False)
+        runner = TwoStageCoolingRealRunner(
+            self._provider(27.5, 28.0),
+            FakeCommandSender(result=True),
+            now_provider=lambda: self.now,
+            state_recorder=recorder,
+        )
+
+        result = runner.run_cycle()
+
+        self.assertTrue(result.committed)
+        self.assertEqual(
+            runner.decision_runner.state.current_cooler_temp,
+            24.0,
+        )
+        self.assertEqual(len(recorder.calls), 1)
+
+    def test_aircon_state_recorder_uses_existing_schema(self):
+        recorder = AirconStateRecorder()
+
+        with mock.patch('models.base.AirconState.create') as create:
+            create.return_value = object()
+            self.assertTrue(recorder.record_cooling(
+                time=self.now,
+                cooler_temp=24.0,
+            ))
+
+        create.assert_called_once_with(
+            time=self.now,
+            mode='cooler',
+            setting_temp=24.0,
+            heater_setting_temp=None,
+            cooler_setting_temp=24.0,
+        )
 
     def test_real_runner_stop_uses_sender_off(self):
         sender = FakeCommandSender(result=True)
@@ -322,6 +473,7 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             self._provider(27.5, 28.0),
             sender,
             now_provider=lambda: self.now,
+            state_recorder=FakeStateRecorder(),
         )
 
         self.assertTrue(runner.stop())

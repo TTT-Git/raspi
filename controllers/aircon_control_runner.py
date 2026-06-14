@@ -180,6 +180,21 @@ class AirconCoolingCommandSender:
         return True
 
 
+class AirconStateRecorder:
+    """Persist confirmed two-stage cooling state for the existing Web UI."""
+
+    def record_cooling(self, time, cooler_temp):
+        from models.base import AirconState
+
+        return bool(AirconState.create(
+            time=time,
+            mode='cooler',
+            setting_temp=cooler_temp,
+            heater_setting_temp=None,
+            cooler_setting_temp=cooler_temp,
+        ))
+
+
 class TwoStageCoolingControlRunner:
     def __init__(
         self,
@@ -228,6 +243,7 @@ class TwoStageCoolingControlRunner:
             self.decision_runner.state.current_cooler_temp
         )
         result = self.decision_runner.run_cycle(samples, now)
+        self._after_run_cycle(now, result)
         decision = result.decision
         state = result.state
         logger.info({
@@ -266,6 +282,9 @@ class TwoStageCoolingControlRunner:
         })
         return result
 
+    def _after_run_cycle(self, now, result):
+        del now
+        del result
 
     @property
     def _simulated(self):
@@ -304,8 +323,10 @@ class TwoStageCoolingRealRunner(TwoStageCoolingControlRunner):
         sender,
         decision_runner=None,
         now_provider=None,
+        state_recorder=None,
     ):
         self.sender = sender
+        self.state_recorder = state_recorder or AirconStateRecorder()
         super().__init__(
             temperature_provider=temperature_provider,
             adapter=RealCoolingCommandAdapter(sender),
@@ -313,6 +334,43 @@ class TwoStageCoolingRealRunner(TwoStageCoolingControlRunner):
             decision_runner=decision_runner,
             now_provider=now_provider,
         )
+
+    def _after_run_cycle(self, now, result):
+        if not result.command_result.success:
+            return
+
+        cooler_temp = result.state.current_cooler_temp
+        try:
+            recorded = self.state_recorder.record_cooling(
+                time=now,
+                cooler_temp=cooler_temp,
+            )
+        except Exception:
+            logger.exception({
+                'action': 'two-stage aircon_state write',
+                'status': 'write_skipped',
+                'message': (
+                    'failed to record confirmed cooling state; '
+                    'control will continue'
+                ),
+                'control_mode': TWO_STAGE_REAL_MODE,
+                'command': result.command.command_type.value,
+                'cooler_temp': cooler_temp,
+            })
+            return
+
+        if not recorded:
+            logger.warning({
+                'action': 'two-stage aircon_state write',
+                'status': 'write_skipped',
+                'message': (
+                    'confirmed cooling state was not recorded; '
+                    'control will continue'
+                ),
+                'control_mode': TWO_STAGE_REAL_MODE,
+                'command': result.command.command_type.value,
+                'cooler_temp': cooler_temp,
+            })
 
     def stop(self):
         return self.sender.off()
@@ -323,6 +381,7 @@ def create_control_runner(
     ai=None,
     temperature_provider=None,
     command_sender=None,
+    state_recorder=None,
 ):
     selected_mode = resolve_control_mode(configured_mode=mode)
     if selected_mode in (
@@ -335,7 +394,11 @@ def create_control_runner(
         )
         if selected_mode == TWO_STAGE_REAL_MODE:
             sender = command_sender or AirconCoolingCommandSender()
-            return TwoStageCoolingRealRunner(provider, sender)
+            return TwoStageCoolingRealRunner(
+                provider,
+                sender,
+                state_recorder=state_recorder,
+            )
         return TwoStageCoolingDryRunRunner(provider)
 
     if ai is None:
