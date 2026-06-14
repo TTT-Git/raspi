@@ -17,13 +17,21 @@ class AirconStream(object):
     def stream_aircon_ctrl(self):
         logger.info(f'stream_aircon_ctrl run')
         self.is_running = True
-        
-        while not self.stop:
-            self.ai.ctrl_temp()
-            sleep(settings.time_interval_aircon_ai_sec)
-        
-        self.is_running = False
-        logger.info(f'stream_aircon_ctrl stopped')
+
+        try:
+            while not self.stop:
+                try:
+                    self.ai.ctrl_temp()
+                except Exception:
+                    logger.exception({
+                        'action': 'control loop',
+                        'status': 'cycle_skipped',
+                        'message': 'control cycle failed; continuing with next cycle',
+                    })
+                sleep(settings.time_interval_aircon_ai_sec)
+        finally:
+            self.is_running = False
+            logger.info(f'stream_aircon_ctrl stopped')
     
     def stop_aircon(self):
         """エアコンをオフにして、制御ループを停止する"""

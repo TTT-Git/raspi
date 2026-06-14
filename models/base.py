@@ -1,7 +1,10 @@
 from contextlib import contextmanager
+import logging
 import threading
+from time import sleep
 
 from sqlalchemy import create_engine
+from sqlalchemy import event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
@@ -13,32 +16,219 @@ from sqlalchemy import Float
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import OperationalError
 
 import settings
 
-engine = create_engine(f'sqlite:///{settings.db_name}?check_same_thread=False', connect_args={'timeout': 10})
+logger = logging.getLogger(__name__)
+
+DB_CONNECTION_TIMEOUT_SECONDS = 5
+DB_BUSY_TIMEOUT_MS = 5000
+DB_RETRY_DELAYS_SECONDS = (0.5, 1.0, 2.0, 4.0, 5.0)
+
+
+class DatabaseLockError(RuntimeError):
+    """Raised after a locked SQLite operation exhausts its retries."""
+
+    def __init__(self, operation_name, attempts):
+        super().__init__(
+            f'{operation_name} skipped after {attempts} attempts because the database remained locked'
+        )
+        self.operation_name = operation_name
+        self.attempts = attempts
+
+
+def is_database_locked(error):
+    message = str(getattr(error, 'orig', error)).lower()
+    return 'locked' in message or 'busy' in message
+
+
+engine = create_engine(
+    f'sqlite:///{settings.db_name}',
+    connect_args={
+        'timeout': DB_CONNECTION_TIMEOUT_SECONDS,
+        'check_same_thread': False,
+    },
+)
 # engine = create_engine(f'sqlite:///:memory:')
 Base = declarative_base()
-Session = scoped_session(sessionmaker(bind=engine))
+Session = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
 lock = threading.Lock()
 
-@contextmanager
-def session_scope():
-    session = Session()
-    session.expire_on_commit = False
+
+@event.listens_for(engine, 'connect')
+def set_sqlite_busy_timeout(dbapi_connection, connection_record):
+    del connection_record
+    cursor = None
     try:
-        # 関数が呼び出されたらロックする。
-        lock.acquire()
-        yield session
-        session.commit()
-    except Exception as e:
-        # logger.error(f'action=session_scope error={e}')
-        session.rollback()
-        raise
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f'PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}')
+    except Exception:
+        logger.warning({
+            'action': 'sqlite connection setup',
+            'status': 'busy_timeout_failed',
+            'message': 'failed to set PRAGMA busy_timeout; continuing with connection timeout',
+        }, exc_info=True)
     finally:
-        session.expire_on_commit = True
-        # 関数が実行し終わったら、ロックを解除する。
-        lock.release()
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                logger.warning({
+                    'action': 'sqlite connection setup',
+                    'status': 'cursor_close_failed',
+                    'message': 'failed to close SQLite setup cursor',
+                }, exc_info=True)
+
+
+@event.listens_for(engine, 'first_connect')
+def enable_sqlite_wal(dbapi_connection, connection_record):
+    del connection_record
+    cursor = None
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute('PRAGMA journal_mode=WAL')
+        result = cursor.fetchone()
+        journal_mode = result[0].lower() if result else None
+        if journal_mode != 'wal':
+            logger.warning({
+                'action': 'sqlite connection setup',
+                'status': 'wal_not_enabled',
+                'message': f'PRAGMA journal_mode returned {journal_mode!r}; continuing without WAL',
+            })
+    except Exception:
+        logger.warning({
+            'action': 'sqlite connection setup',
+            'status': 'wal_enable_failed',
+            'message': 'failed to enable WAL mode; continuing without WAL',
+        }, exc_info=True)
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                logger.warning({
+                    'action': 'sqlite connection setup',
+                    'status': 'cursor_close_failed',
+                    'message': 'failed to close SQLite setup cursor',
+                }, exc_info=True)
+
+
+def _rollback_session(session, operation_name):
+    try:
+        session.rollback()
+    except Exception:
+        logger.exception({
+            'action': operation_name,
+            'status': 'rollback_failed',
+            'message': 'database rollback failed',
+        })
+
+
+def _close_session(session, session_registry, operation_name):
+    try:
+        session.close()
+    except Exception:
+        logger.exception({
+            'action': operation_name,
+            'status': 'session_close_failed',
+            'message': 'database session close failed',
+        })
+    finally:
+        remove = getattr(session_registry, 'remove', None)
+        if remove is not None:
+            try:
+                remove()
+            except Exception:
+                logger.exception({
+                    'action': operation_name,
+                    'status': 'session_remove_failed',
+                    'message': 'failed to remove scoped database session',
+                })
+
+
+def execute_db_operation(
+        operation,
+        operation_name,
+        write=False,
+        session_registry=None,
+        retry_delays=None):
+    """Execute one replayable DB operation with lock-specific retries."""
+    if session_registry is None:
+        session_registry = Session
+    retry_delays = (
+        DB_RETRY_DELAYS_SECONDS
+        if retry_delays is None
+        else tuple(retry_delays)
+    )
+    max_attempts = len(retry_delays) + 1
+
+    for attempt in range(1, max_attempts + 1):
+        session = session_registry()
+        try:
+            with lock:
+                try:
+                    result = operation(session)
+                    if write:
+                        session.commit()
+                except Exception:
+                    _rollback_session(session, operation_name)
+                    raise
+            return result
+        except OperationalError as error:
+            if not is_database_locked(error):
+                logger.exception({
+                    'action': operation_name,
+                    'status': 'database_error',
+                    'message': 'non-lock OperationalError occurred',
+                })
+                raise
+
+            if attempt < max_attempts:
+                delay = retry_delays[attempt - 1]
+                logger.warning({
+                    'action': operation_name,
+                    'status': 'database_locked_retry',
+                    'message': 'database is locked or busy; retrying operation',
+                    'attempt': attempt,
+                    'max_retries': len(retry_delays),
+                    'retry_in_seconds': delay,
+                })
+            else:
+                logger.error({
+                    'action': operation_name,
+                    'status': 'database_locked_skipped',
+                    'message': 'database remained locked; skipping operation',
+                    'attempts': attempt,
+                })
+                raise DatabaseLockError(operation_name, attempt) from error
+        except Exception:
+            logger.exception({
+                'action': operation_name,
+                'status': 'database_error',
+                'message': 'database operation failed',
+            })
+            raise
+        finally:
+            _close_session(session, session_registry, operation_name)
+
+        sleep(delay)
+
+
+@contextmanager
+def session_scope(operation_name='database operation'):
+    """Provide a single transaction with guaranteed rollback and cleanup."""
+    session = Session()
+    try:
+        with lock:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                _rollback_session(session, operation_name)
+                raise
+    finally:
+        _close_session(session, Session, operation_name)
 
 
 class BaseTempHumidMixin(object):
@@ -75,32 +265,47 @@ class BaseTempHumidMixin(object):
             })
             return False
         
-        temp_humid_data = cls(time=time,
-                     temperature=temperature,
-                     humidity=humidity,
-                     co2_ppm=co2_ppm,
-                     meas_position=meas_position,
-                     hostname=hostname
-                     )
+        operation_name = f'temp_humid write {cls.__tablename__}'
+
+        def create_record(session):
+            temp_humid_data = cls(
+                time=time,
+                temperature=temperature,
+                humidity=humidity,
+                co2_ppm=co2_ppm,
+                meas_position=meas_position,
+                hostname=hostname,
+            )
+            session.add(temp_humid_data)
+            return temp_humid_data
+
         try:
-            with session_scope() as session:
-                session.add(temp_humid_data)
-                return temp_humid_data
+            return execute_db_operation(
+                create_record,
+                operation_name=operation_name,
+                write=True,
+            )
         except IntegrityError:
+            return False
+        except DatabaseLockError:
             return False
     
     @classmethod
     def get(cls,time):
-        with session_scope() as session:
-            temp_humid_data = session.query(cls).filter(
-                cls.time == time).first()
-            if temp_humid_data is None:
-                return None
-            return temp_humid_data
+        def get_record(session):
+            return session.query(cls).filter(cls.time == time).first()
+
+        return execute_db_operation(
+            get_record,
+            operation_name=f'temp_humid read by time {cls.__tablename__}',
+        )
     
     def save(self):
-        with session_scope() as session:
-            session.add(self)
+        return execute_db_operation(
+            lambda session: session.merge(self),
+            operation_name=f'temp_humid save {self.__tablename__}',
+            write=True,
+        )
     
     @classmethod
     def get_all_data(cls, limit=100):
@@ -109,11 +314,14 @@ class BaseTempHumidMixin(object):
         データは、最新のものから、limitで指定した数、
         順番は古いものから順番になっている。
         """
-        with session_scope() as session:
-            #order_by 値を使ってソートする
-            #limit で読み込むレコード数を制限する。
-            temp_humid_data = session.query(cls).order_by(
+        def get_records(session):
+            return session.query(cls).order_by(
                 desc(cls.time)).limit(limit).all()
+
+        temp_humid_data = execute_db_operation(
+            get_records,
+            operation_name=f'temp_humid read recent {cls.__tablename__}',
+        )
 
         if temp_humid_data is None:
             return None
@@ -138,24 +346,21 @@ class BaseTempHumidMixin(object):
         """
         データベースにある最後のデータを取得する。
         """
-        with session_scope() as session:
-            #order_by 値を使ってソートする
-            #limit で読み込むレコード数を制限する。
-            temp_humid_data = session.query(cls).order_by(
-                desc(cls.time)).first()
-        return temp_humid_data
+        return execute_db_operation(
+            lambda session: session.query(cls).order_by(
+                desc(cls.time)).first(),
+            operation_name=f'temp_humid read latest {cls.__tablename__}',
+        )
     
     @classmethod
     def oldest_record(cls):
         """
         データベースにある最初のデータを取得する。
         """
-        with session_scope() as session:
-            #order_by 値を使ってソートする
-            #limit で読み込むレコード数を制限する。
-            temp_humid_data = session.query(cls).order_by(
-                cls.time).first()
-        return temp_humid_data
+        return execute_db_operation(
+            lambda session: session.query(cls).order_by(cls.time).first(),
+            operation_name=f'temp_humid read oldest {cls.__tablename__}',
+        )
     
     @classmethod
     def get_data_after_time(cls, time):
@@ -169,9 +374,11 @@ class BaseTempHumidMixin(object):
         for candle in candles:
             print(candle.value)
         """
-        with session_scope() as session:
-            temp_humid_data = session.query(cls).filter(cls.time >= time).order_by(
-                cls.time).all()
+        temp_humid_data = execute_db_operation(
+            lambda session: session.query(cls).filter(
+                cls.time >= time).order_by(cls.time).all(),
+            operation_name=f'temp_humid read range {cls.__tablename__}',
+        )
 
         if temp_humid_data is None:
             return None
@@ -203,25 +410,35 @@ class AirconState(Base):
     
     @classmethod
     def create(cls, time, mode, setting_temp, heater_setting_temp, cooler_setting_temp):
-        aircon_state = cls(
-            time=time,
-            mode=mode,
-            setting_temp=setting_temp,
-            heater_setting_temp=heater_setting_temp,
-            cooler_setting_temp=cooler_setting_temp
-        )
+        def create_record(session):
+            aircon_state = cls(
+                time=time,
+                mode=mode,
+                setting_temp=setting_temp,
+                heater_setting_temp=heater_setting_temp,
+                cooler_setting_temp=cooler_setting_temp,
+            )
+            session.add(aircon_state)
+            return aircon_state
+
         try:
-            with session_scope() as session:
-                session.add(aircon_state)
-                return aircon_state
+            return execute_db_operation(
+                create_record,
+                operation_name='aircon_state write',
+                write=True,
+            )
         except IntegrityError:
+            return False
+        except DatabaseLockError:
             return False
     
     @classmethod
     def get_data_after_time(cls, time):
-        with session_scope() as session:
-            aircon_states = session.query(cls).filter(cls.time >= time).order_by(
-                cls.time).all()
+        aircon_states = execute_db_operation(
+            lambda session: session.query(cls).filter(
+                cls.time >= time).order_by(cls.time).all(),
+            operation_name='aircon_state read range',
+        )
         if aircon_states is None:
             return None
         return aircon_states
@@ -252,4 +469,38 @@ def factory_temp_humid_class(hostname, device_num):
             return TempHumid_Raspi4B_1_0
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    max_attempts = len(DB_RETRY_DELAYS_SECONDS) + 1
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            Base.metadata.create_all(bind=engine)
+            return True
+        except OperationalError as error:
+            if not is_database_locked(error):
+                logger.exception({
+                    'action': 'database initialization',
+                    'status': 'database_error',
+                    'message': 'database initialization failed',
+                })
+                raise
+
+            if attempt < max_attempts:
+                delay = DB_RETRY_DELAYS_SECONDS[attempt - 1]
+                logger.warning({
+                    'action': 'database initialization',
+                    'status': 'database_locked_retry',
+                    'message': 'database is locked or busy; retrying initialization',
+                    'attempt': attempt,
+                    'max_retries': len(DB_RETRY_DELAYS_SECONDS),
+                    'retry_in_seconds': delay,
+                })
+                sleep(delay)
+                continue
+
+            logger.error({
+                'action': 'database initialization',
+                'status': 'database_locked_skipped',
+                'message': 'database remained locked; continuing without schema initialization',
+                'attempts': attempt,
+            })
+            return False
