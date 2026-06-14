@@ -5,7 +5,8 @@ from threading import Event
 from threading import Lock
 from threading import Thread
 
-from models.ai_aircon_ctrl import Ai
+from controllers.aircon_control_runner import create_control_runner
+from controllers.aircon_control_runner import resolve_control_mode
 import settings
 
 logger = logging.getLogger(__name__)
@@ -18,9 +19,20 @@ class AirconStream(object):
     STOPPING = 'stopping'
     ERROR = 'error'
 
-    def __init__(self, ai=None, control_interval=None) -> None:
+    def __init__(
+        self,
+        ai=None,
+        control_interval=None,
+        control_mode=None,
+        runner_factory=None,
+    ) -> None:
         self.stop = False
-        self.ai = ai if ai is not None else Ai()
+        self.ai = ai
+        self.control_mode = resolve_control_mode(
+            configured_mode=control_mode
+        )
+        self.runner_factory = runner_factory or create_control_runner
+        self.runner = None
         self.control_interval = (
             settings.time_interval_aircon_ai_sec
             if control_interval is None
@@ -57,7 +69,7 @@ class AirconStream(object):
         try:
             while not self._stop_event.is_set():
                 try:
-                    self.ai.ctrl_temp()
+                    self.runner.run_cycle()
                 except Exception as error:
                     with self._lifecycle_lock:
                         self.last_error = self._error_message(error)
@@ -106,9 +118,20 @@ class AirconStream(object):
                 self.thread = None
                 self.last_stopped_at = self._now()
 
-        logger.info("Sending stop signal to the air conditioner...")
+        logger.info({
+            'action': 'aircon stop',
+            'status': 'stop_requested',
+            'control_mode': self.control_mode,
+        })
         try:
-            self.ai.aircon.off()
+            runner = self.runner
+            if runner is None:
+                runner = self.runner_factory(
+                    mode=self.control_mode,
+                    ai=self.ai,
+                )
+                self.runner = runner
+            runner.stop()
         except Exception as error:
             with self._lifecycle_lock:
                 self.last_error = self._error_message(error)
@@ -138,6 +161,21 @@ class AirconStream(object):
             self.state = self.STARTING
             self.last_error = None
             self.last_started_at = self._now()
+            try:
+                self.runner = self.runner_factory(
+                    mode=self.control_mode,
+                    ai=self.ai,
+                )
+            except Exception as error:
+                self.runner = None
+                self.state = self.ERROR
+                self.last_error = self._error_message(error)
+                logger.exception({
+                    'action': 'aircon start',
+                    'status': 'runner_create_failed',
+                    'message': 'failed to create aircon control runner',
+                })
+                return False
             thread = Thread(
                 target=self.stream_aircon_ctrl,
                 name='aircon-control',
@@ -181,6 +219,7 @@ class AirconStream(object):
                 'last_error': self.last_error,
                 'last_started_at': self.last_started_at,
                 'last_stopped_at': self.last_stopped_at,
+                'control_mode': self.control_mode,
             }
 
 

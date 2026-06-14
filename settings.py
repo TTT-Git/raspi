@@ -63,6 +63,7 @@ web_port = int(conf['WEB']['port'])
 time_interval_temp_humid_sec = int(conf['DATA_COLLECTION']['time_interval_temp_humid_sec'])
 
 time_interval_aircon_ai_sec = int(conf['AIRCON_AI']['time_interval_aircon_ai_sec'])
+control_mode = conf.get('AIRCON_AI', 'control_mode', fallback='legacy')
 target_temp = float(conf['AIRCON_AI']['target_temp'])
 temp_range = float(conf['AIRCON_AI']['temp_range'])
 remote_ir = bool(strtobool(conf['AIRCON_AI']['remote_ir']))
