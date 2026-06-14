@@ -48,15 +48,41 @@ class BlockingAi(DummyAi):
         self.release_control.wait(timeout=1.0)
 
 
+class DummyLegacyRunner:
+    def __init__(self, ai):
+        self.ai = ai
+
+    def run_cycle(self):
+        return self.ai.ctrl_temp()
+
+    def stop(self):
+        return self.ai.aircon.off()
+
+
 def load_aircon_stream_module():
     fake_ai_module = types.ModuleType('models.ai_aircon_ctrl')
     fake_ai_module.Ai = DummyAi
+    fake_runner_module = types.ModuleType(
+        'controllers.aircon_control_runner'
+    )
+    fake_runner_module.resolve_control_mode = (
+        lambda configured_mode=None: configured_mode or 'legacy'
+    )
+    fake_runner_module.create_control_runner = (
+        lambda mode=None, ai=None: DummyLegacyRunner(ai or DummyAi())
+    )
     fake_settings = types.ModuleType('settings')
     fake_settings.time_interval_aircon_ai_sec = 0.01
 
     previous_ai_module = sys.modules.get('models.ai_aircon_ctrl')
+    previous_runner_module = sys.modules.get(
+        'controllers.aircon_control_runner'
+    )
     previous_settings = sys.modules.get('settings')
     sys.modules['models.ai_aircon_ctrl'] = fake_ai_module
+    sys.modules[
+        'controllers.aircon_control_runner'
+    ] = fake_runner_module
     sys.modules['settings'] = fake_settings
 
     try:
@@ -72,6 +98,12 @@ def load_aircon_stream_module():
             sys.modules.pop('models.ai_aircon_ctrl', None)
         else:
             sys.modules['models.ai_aircon_ctrl'] = previous_ai_module
+        if previous_runner_module is None:
+            sys.modules.pop('controllers.aircon_control_runner', None)
+        else:
+            sys.modules[
+                'controllers.aircon_control_runner'
+            ] = previous_runner_module
         if previous_settings is None:
             sys.modules.pop('settings', None)
         else:
@@ -157,6 +189,32 @@ class AirconStreamTest(unittest.TestCase):
         self.assertEqual(start_results.count(False), 5)
         self.assertTrue(self.ai.control_called.wait(timeout=1.0))
         self.assertTrue(self.stream.get_status()['thread_alive'])
+
+    def test_start_creates_one_runner_and_duplicate_start_reuses_it(self):
+        runners = []
+
+        def runner_factory(mode=None, ai=None):
+            del mode
+            runner = DummyLegacyRunner(ai)
+            runners.append(runner)
+            return runner
+
+        stream = self.module.AirconStream(
+            ai=self.ai,
+            control_interval=0.02,
+            runner_factory=runner_factory,
+        )
+        try:
+            self.assertTrue(stream.start_aircon())
+            self.assertTrue(self.ai.control_called.wait(timeout=1.0))
+            self.assertFalse(stream.start_aircon())
+            self.assertEqual(len(runners), 1)
+            self.assertIs(stream.runner, runners[0])
+        finally:
+            stream.stop_aircon()
+            thread = stream.thread
+            if thread is not None:
+                thread.join(timeout=1.0)
 
     def test_stop_requests_shutdown_and_thread_exits(self):
         self.assertTrue(self.stream.start_aircon())
@@ -253,6 +311,7 @@ class AirconStreamTest(unittest.TestCase):
         self.assertFalse(status['thread_alive'])
         self.assertFalse(status['stop_requested'])
         self.assertEqual(status['state'], 'stopped')
+        self.assertEqual(status['control_mode'], 'legacy')
         self.assertIsNone(status['last_error'])
 
     def test_web_api_start_is_idempotent_and_status_tracks_thread(self):
