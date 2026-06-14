@@ -7,6 +7,7 @@ import os
 from controllers.cooling_command_adapter import (
     DryRunCoolingCommandAdapter,
 )
+from controllers.cooling_command_adapter import RealCoolingCommandAdapter
 from controllers.two_stage_cooling_runner import (
     TwoStageCoolingRunner as CoolingDecisionRunner,
 )
@@ -33,14 +34,6 @@ def normalize_control_mode(value):
             'action': 'aircon control mode',
             'status': 'invalid_mode',
             'message': 'invalid control mode; falling back to legacy',
-            'control_mode': mode,
-        })
-        return LEGACY_MODE
-    if mode == TWO_STAGE_REAL_MODE:
-        logger.warning({
-            'action': 'aircon control mode',
-            'status': 'mode_not_connected',
-            'message': 'two_stage_real is not connected; falling back to legacy',
             'control_mode': mode,
         })
         return LEGACY_MODE
@@ -165,15 +158,40 @@ class RecentTemperatureProvider:
         return temp_humid_class
 
 
-class TwoStageCoolingDryRunRunner:
+class AirconCoolingCommandSender:
+    """Adapt the existing Aircon API to an explicit success contract."""
+
+    def __init__(self, aircon=None):
+        if aircon is None:
+            from pigpios.ir_ctrl import Aircon
+
+            aircon = Aircon(
+                remote_raspi=settings.remote_ir,
+                ssh_num=settings.remote_ir_raspi_ssh_num,
+            )
+        self.aircon = aircon
+
+    def cooler(self, temp, fan='auto'):
+        self.aircon.cooler(temp=temp, fan=fan)
+        return True
+
+    def off(self):
+        self.aircon.off()
+        return True
+
+
+class TwoStageCoolingControlRunner:
     def __init__(
         self,
         temperature_provider,
+        adapter,
+        control_mode,
         decision_runner=None,
         now_provider=None,
     ):
         self.temperature_provider = temperature_provider
-        self.adapter = DryRunCoolingCommandAdapter()
+        self.adapter = adapter
+        self.control_mode = control_mode
         self.decision_runner = decision_runner or CoolingDecisionRunner(
             self.adapter
         )
@@ -189,20 +207,20 @@ class TwoStageCoolingDryRunRunner:
             samples, latest_at = self.temperature_provider.get_samples(now)
         except TemperatureDataUnavailable as error:
             logger.warning({
-                'action': 'two-stage dry-run',
+                'action': 'two-stage cooling',
                 'status': error.status,
                 'message': str(error),
-                'control_mode': TWO_STAGE_DRY_RUN_MODE,
-                'simulated': True,
+                'control_mode': self.control_mode,
+                'simulated': self._simulated,
             })
             return None
         except Exception:
             logger.exception({
-                'action': 'two-stage dry-run',
+                'action': 'two-stage cooling',
                 'status': 'temperature_read_failed',
                 'message': 'temperature read failed; skipping decision',
-                'control_mode': TWO_STAGE_DRY_RUN_MODE,
-                'simulated': True,
+                'control_mode': self.control_mode,
+                'simulated': self._simulated,
             })
             return None
 
@@ -213,9 +231,13 @@ class TwoStageCoolingDryRunRunner:
         decision = result.decision
         state = result.state
         logger.info({
-            'action': 'two-stage dry-run',
-            'status': 'decision_simulated',
-            'control_mode': TWO_STAGE_DRY_RUN_MODE,
+            'action': 'two-stage cooling',
+            'status': (
+                'decision_applied'
+                if result.command_result.success
+                else 'decision_not_applied'
+            ),
+            'control_mode': self.control_mode,
             'control_state': state.control_state.value,
             'median_temperature': decision.median_temperature,
             'current_cooler_temp': previous_cooler_temp,
@@ -226,6 +248,7 @@ class TwoStageCoolingDryRunRunner:
             'action_required': decision.action_required,
             'command': result.command.command_type.value,
             'reason': decision.reason,
+            'success': result.command_result.success,
             'confirm_count': decision.consecutive_count,
             'last_change_at': (
                 state.last_change_at.isoformat()
@@ -239,9 +262,30 @@ class TwoStageCoolingDryRunRunner:
             ),
             'predicted_temperature': decision.predicted_temperature,
             'temperature_data_at': latest_at.isoformat(),
-            'simulated': True,
+            'simulated': result.command_result.simulated,
         })
         return result
+
+
+    @property
+    def _simulated(self):
+        return self.control_mode == TWO_STAGE_DRY_RUN_MODE
+
+
+class TwoStageCoolingDryRunRunner(TwoStageCoolingControlRunner):
+    def __init__(
+        self,
+        temperature_provider,
+        decision_runner=None,
+        now_provider=None,
+    ):
+        super().__init__(
+            temperature_provider=temperature_provider,
+            adapter=DryRunCoolingCommandAdapter(),
+            control_mode=TWO_STAGE_DRY_RUN_MODE,
+            decision_runner=decision_runner,
+            now_provider=now_provider,
+        )
 
     def stop(self):
         logger.info({
@@ -253,17 +297,45 @@ class TwoStageCoolingDryRunRunner:
         })
 
 
+class TwoStageCoolingRealRunner(TwoStageCoolingControlRunner):
+    def __init__(
+        self,
+        temperature_provider,
+        sender,
+        decision_runner=None,
+        now_provider=None,
+    ):
+        self.sender = sender
+        super().__init__(
+            temperature_provider=temperature_provider,
+            adapter=RealCoolingCommandAdapter(sender),
+            control_mode=TWO_STAGE_REAL_MODE,
+            decision_runner=decision_runner,
+            now_provider=now_provider,
+        )
+
+    def stop(self):
+        return self.sender.off()
+
+
 def create_control_runner(
     mode=None,
     ai=None,
     temperature_provider=None,
+    command_sender=None,
 ):
     selected_mode = resolve_control_mode(configured_mode=mode)
-    if selected_mode == TWO_STAGE_DRY_RUN_MODE:
+    if selected_mode in (
+        TWO_STAGE_DRY_RUN_MODE,
+        TWO_STAGE_REAL_MODE,
+    ):
         provider = temperature_provider or RecentTemperatureProvider(
             hostname=settings.use_temperature_sensor_hostname,
             device_num=settings.use_temperature_sensor_device_num,
         )
+        if selected_mode == TWO_STAGE_REAL_MODE:
+            sender = command_sender or AirconCoolingCommandSender()
+            return TwoStageCoolingRealRunner(provider, sender)
         return TwoStageCoolingDryRunRunner(provider)
 
     if ai is None:
