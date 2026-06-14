@@ -81,7 +81,8 @@ class AirconStream(object):
         finally:
             with self._lifecycle_lock:
                 self.is_running = False
-                self.stop = self._stop_event.is_set()
+                self._stop_event.clear()
+                self.stop = False
                 if not ended_with_error:
                     self.state = self.STOPPED
                 self.last_stopped_at = self._now()
@@ -98,6 +99,8 @@ class AirconStream(object):
             if thread_alive:
                 self.state = self.STOPPING
             else:
+                self._stop_event.clear()
+                self.stop = False
                 self.is_running = False
                 self.state = self.STOPPED
                 self.thread = None

@@ -37,6 +37,17 @@ class DummyAi:
             raise RuntimeError('simulated control failure')
 
 
+class BlockingAi(DummyAi):
+    def __init__(self):
+        super().__init__()
+        self.release_control = threading.Event()
+
+    def ctrl_temp(self):
+        self.ctrl_calls += 1
+        self.control_called.set()
+        self.release_control.wait(timeout=1.0)
+
+
 def load_aircon_stream_module():
     fake_ai_module = types.ModuleType('models.ai_aircon_ctrl')
     fake_ai_module.Ai = DummyAi
@@ -121,6 +132,7 @@ class AirconStreamTest(unittest.TestCase):
 
         status = self.stream.get_status()
         self.assertTrue(status['running'])
+        self.assertFalse(status['stop_requested'])
         self.assertTrue(status['thread_alive'])
         self.assertEqual(status['state'], 'running')
 
@@ -157,10 +169,57 @@ class AirconStreamTest(unittest.TestCase):
 
         status = self.stream.get_status()
         self.assertFalse(status['running'])
-        self.assertTrue(status['stop_requested'])
+        self.assertFalse(status['stop_requested'])
+        self.assertFalse(status['stop'])
         self.assertEqual(status['state'], 'stopped')
         self.assertIsNotNone(status['last_stopped_at'])
         self.assertEqual(self.ai.aircon.off_calls, 1)
+
+    def test_stop_requested_is_true_only_while_thread_is_stopping(self):
+        blocking_ai = BlockingAi()
+        stream = self.module.AirconStream(
+            ai=blocking_ai,
+            control_interval=0.02,
+        )
+        try:
+            self.assertTrue(stream.start_aircon())
+            self.assertTrue(blocking_ai.control_called.wait(timeout=1.0))
+
+            self.assertTrue(stream.stop_aircon())
+            stopping_status = stream.get_status()
+            self.assertEqual(stopping_status['state'], 'stopping')
+            self.assertTrue(stopping_status['stop_requested'])
+            self.assertTrue(stopping_status['stop'])
+
+            blocking_ai.release_control.set()
+            self.assertTrue(wait_until(
+                lambda: not stream.get_status()['thread_alive']
+            ))
+            stopped_status = stream.get_status()
+            self.assertEqual(stopped_status['state'], 'stopped')
+            self.assertFalse(stopped_status['stop_requested'])
+            self.assertFalse(stopped_status['stop'])
+        finally:
+            blocking_ai.release_control.set()
+            stream.stop_aircon()
+            thread = stream.thread
+            if thread is not None:
+                thread.join(timeout=1.0)
+
+    def test_repeated_stop_does_not_leave_stop_requested_set(self):
+        self.assertTrue(self.stream.start_aircon())
+        self.assertTrue(self.ai.control_called.wait(timeout=1.0))
+
+        self.assertTrue(self.stream.stop_aircon())
+        self.assertTrue(self.stream.stop_aircon())
+        self.assertTrue(wait_until(
+            lambda: not self.stream.get_status()['thread_alive']
+        ))
+
+        status = self.stream.get_status()
+        self.assertEqual(status['state'], 'stopped')
+        self.assertFalse(status['stop_requested'])
+        self.assertFalse(status['stop'])
 
     def test_control_can_restart_after_previous_thread_stops(self):
         self.assertTrue(self.stream.start_aircon())
@@ -173,7 +232,9 @@ class AirconStreamTest(unittest.TestCase):
         self.assertTrue(self.stream.start_aircon())
         self.assertTrue(self.ai.control_called.wait(timeout=1.0))
         self.assertIsNot(self.stream.thread, first_thread)
-        self.assertTrue(self.stream.get_status()['running'])
+        status = self.stream.get_status()
+        self.assertTrue(status['running'])
+        self.assertFalse(status['stop_requested'])
 
     def test_control_exception_is_recorded_and_next_cycle_runs(self):
         self.ai.failures = 1
@@ -248,6 +309,9 @@ class AirconStreamTest(unittest.TestCase):
                 stopped_status = client.get('/api/aircon/status/').get_json()
                 self.assertEqual(stopped_status['status']['state'], 'stopped')
                 self.assertFalse(stopped_status['status']['thread_alive'])
+                self.assertFalse(
+                    stopped_status['status']['stop_requested']
+                )
         finally:
             web_stream.stop_aircon()
             thread = web_stream.thread
