@@ -51,6 +51,30 @@ class BaseTempHumidMixin(object):
 
     @classmethod
     def create(cls, time, temperature, humidity, co2_ppm, meas_position, hostname):
+        # 温度のバリデーション: -50度〜60度の範囲外は異常値として保存しない
+        if temperature is not None and (temperature < -50 or temperature > 60):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning({
+                'action': 'create',
+                'status': 'validation_error',
+                'message': f'異常な温度値が検出されました。保存をスキップします。',
+                'data': f'time: {time}, temperature: {temperature}, hostname: {hostname}, meas_position: {meas_position}'
+            })
+            return False
+        
+        # 湿度のバリデーション: 0〜100%の範囲外は異常値として保存しない
+        if humidity is not None and (humidity < 0 or humidity > 100):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning({
+                'action': 'create',
+                'status': 'validation_error',
+                'message': f'異常な湿度値が検出されました。保存をスキップします。',
+                'data': f'time: {time}, humidity: {humidity}, hostname: {hostname}, meas_position: {meas_position}'
+            })
+            return False
+        
         temp_humid_data = cls(time=time,
                      temperature=temperature,
                      humidity=humidity,
@@ -166,6 +190,51 @@ class TempHumid_Raspi0_2_1(BaseTempHumidMixin,Base):
 
 class TempHumid_Raspi4B_1_0(BaseTempHumidMixin,Base):
     __tablename__ = 'TempHumid_Raspi4B_1_0'
+
+
+class AirconState(Base):
+    __tablename__ = 'aircon_state'
+    
+    time = Column(DateTime, primary_key=True, nullable=False)
+    mode = Column(String)  # 'heater' or 'cooler' or 'off'
+    setting_temp = Column(Float)  # 設定温度
+    heater_setting_temp = Column(Float)  # 暖房設定温度
+    cooler_setting_temp = Column(Float)  # 冷房設定温度
+    
+    @classmethod
+    def create(cls, time, mode, setting_temp, heater_setting_temp, cooler_setting_temp):
+        aircon_state = cls(
+            time=time,
+            mode=mode,
+            setting_temp=setting_temp,
+            heater_setting_temp=heater_setting_temp,
+            cooler_setting_temp=cooler_setting_temp
+        )
+        try:
+            with session_scope() as session:
+                session.add(aircon_state)
+                return aircon_state
+        except IntegrityError:
+            return False
+    
+    @classmethod
+    def get_data_after_time(cls, time):
+        with session_scope() as session:
+            aircon_states = session.query(cls).filter(cls.time >= time).order_by(
+                cls.time).all()
+        if aircon_states is None:
+            return None
+        return aircon_states
+    
+    @property
+    def value(self):
+        return {
+            'time': self.time,
+            'mode': self.mode,
+            'setting_temp': self.setting_temp,
+            'heater_setting_temp': self.heater_setting_temp,
+            'cooler_setting_temp': self.cooler_setting_temp
+        }
 
 
 def factory_temp_humid_class(hostname, device_num):
