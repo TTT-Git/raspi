@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime
 from datetime import timedelta
 
+from models.two_stage_cooling import CoolingControlConfig
 from models.two_stage_cooling import CoolingControlInput
 from models.two_stage_cooling import CoolingState
 from models.two_stage_cooling import StableDirection
@@ -57,18 +58,53 @@ class TwoStageCoolingControllerTest(unittest.TestCase):
         self.assertEqual(decision.median_temperature, 26.0)
         self.assertEqual(decision.next_state, CoolingState.STABLE_COOLING)
 
-    def test_start_enters_recovery_at_threshold_and_recommends_24(self):
+    def test_start_enters_recovery_at_27_0_and_recommends_24(self):
         decision = self.controller.decide(self._input(
             CoolingState.STOPPED,
-            self._samples(27.1, 27.2, 27.3),
+            self._samples(26.9, 27.0, 27.1),
             current_cooler_temp=26.0,
         ))
 
+        self.assertEqual(decision.median_temperature, 27.0)
         self.assertEqual(decision.next_state, CoolingState.RECOVERY_COOLING)
         self.assertTrue(decision.should_change)
         self.assertEqual(decision.recommended_cooler_temp, 24.0)
         self.assertEqual(decision.reason, 'recovery_started')
         self.assertEqual(decision.recovery_started_at, self.now)
+
+    def test_recovery_start_threshold_is_derived_from_target_and_margin(self):
+        config = CoolingControlConfig(
+            target_temp=24.0,
+            recovery_start_margin=1.3,
+            recovery_end_threshold=24.5,
+        )
+
+        self.assertAlmostEqual(config.recovery_start_threshold, 25.3)
+
+    def test_start_at_26_9_enters_stable_cooling(self):
+        decision = self.controller.decide(self._input(
+            CoolingState.STOPPED,
+            self._samples(26.8, 26.9, 27.0),
+            current_cooler_temp=26.0,
+        ))
+
+        self.assertEqual(decision.median_temperature, 26.9)
+        self.assertEqual(decision.next_state, CoolingState.STABLE_COOLING)
+        self.assertFalse(decision.should_change)
+        self.assertEqual(decision.reason, 'stable_started')
+
+    def test_force_recovery_allows_future_manual_recovery_start(self):
+        decision = self.controller.decide(self._input(
+            CoolingState.STOPPED,
+            self._samples(25.5, 25.7, 25.9),
+            current_cooler_temp=26.0,
+            force_recovery=True,
+        ))
+
+        self.assertEqual(decision.next_state, CoolingState.RECOVERY_COOLING)
+        self.assertTrue(decision.should_change)
+        self.assertEqual(decision.recommended_cooler_temp, 24.0)
+        self.assertEqual(decision.reason, 'recovery_forced')
 
     def test_recovery_holds_24_without_periodic_changes(self):
         started_at = self.now - timedelta(minutes=20)

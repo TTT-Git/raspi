@@ -27,7 +27,7 @@ class CoolingControlConfig:
     target_temp: float = 25.7
     deadband_low: float = 25.3
     deadband_high: float = 26.1
-    recovery_start_threshold: float = 27.2
+    recovery_start_margin: float = 1.3
     recovery_end_threshold: float = 26.2
     recovery_cooler_temp: float = 24.0
     stable_exit_cooler_temp: float = 26.0
@@ -40,6 +40,8 @@ class CoolingControlConfig:
     def __post_init__(self):
         if self.deadband_low >= self.deadband_high:
             raise ValueError('deadband_low must be lower than deadband_high')
+        if self.recovery_start_margin <= 0:
+            raise ValueError('recovery_start_margin must be positive')
         if self.recovery_end_threshold >= self.recovery_start_threshold:
             raise ValueError(
                 'recovery_end_threshold must be lower than '
@@ -55,6 +57,10 @@ class CoolingControlConfig:
             raise ValueError('median_window_minutes must be positive')
         if self.recovery_max_minutes <= 0:
             raise ValueError('recovery_max_minutes must be positive')
+
+    @property
+    def recovery_start_threshold(self):
+        return self.target_temp + self.recovery_start_margin
 
 
 @dataclass(frozen=True)
@@ -74,6 +80,7 @@ class CoolingControlInput:
     consecutive_direction: Optional[StableDirection] = None
     consecutive_count: int = 0
     predicted_temperature: Optional[float] = None
+    force_recovery: bool = False
 
 
 @dataclass(frozen=True)
@@ -147,17 +154,25 @@ class TwoStageCoolingController:
         return float(median(values))
 
     def _decide_start(self, control_input, median_temperature):
-        if median_temperature >= self.config.recovery_start_threshold:
+        if (
+            control_input.force_recovery
+            or median_temperature >= self.config.recovery_start_threshold
+        ):
             recommended = self.config.recovery_cooler_temp
             should_change = (
                 recommended != control_input.current_cooler_temp
+            )
+            reason = (
+                'recovery_forced'
+                if control_input.force_recovery
+                else 'recovery_started'
             )
             return self._decision(
                 control_input=control_input,
                 next_state=CoolingState.RECOVERY_COOLING,
                 should_change=should_change,
                 recommended_cooler_temp=recommended,
-                reason='recovery_started',
+                reason=reason,
                 median_temperature=median_temperature,
                 last_change_at=(
                     control_input.now
