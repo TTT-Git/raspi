@@ -176,9 +176,9 @@ def api_aircon_start():
     エアコンの温度制御を開始する
     """
     try:
-        result = aircon_stream.start_aircon()
-        if result:
-            status = aircon_stream.get_status()
+        started = aircon_stream.start_aircon()
+        status = aircon_stream.get_status()
+        if started:
             logger.info({
                 'action': 'api_aircon_start',
                 'status': 'success',
@@ -189,13 +189,34 @@ def api_aircon_start():
                 'message': 'エアコン制御を開始しました',
                 'status': status
             }), 200
-        else:
+
+        if status['state'] in ('starting', 'running'):
+            logger.info({
+                'action': 'api_aircon_start',
+                'status': 'already_running',
+                'message': 'エアコン制御は既に実行中です'
+            })
+            return jsonify({
+                'success': True,
+                'message': 'エアコン制御は既に実行中です',
+                'already_running': True,
+                'status': status
+            }), 200
+
+        if status['state'] == 'stopping':
             return jsonify({
                 'success': False,
-                'error': 'エアコン制御は既に実行中です'
-            }), 400
+                'error': 'エアコン制御は停止処理中です',
+                'status': status
+            }), 409
+
+        return jsonify({
+            'success': False,
+            'error': status['last_error'] or 'エアコン制御を開始できませんでした',
+            'status': status
+        }), 500
     except Exception as e:
-        logger.error({
+        logger.exception({
             'action': 'api_aircon_start',
             'status': 'error',
             'message': str(e)
@@ -231,4 +252,3 @@ def api_aircon_status():
 
 def start():
     app.run(host='0.0.0.0', port=settings.web_port, threaded=True)
-

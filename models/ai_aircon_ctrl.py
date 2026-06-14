@@ -6,9 +6,12 @@ import numpy as np
 
 
 import pandas as pd
+from sqlalchemy.exc import SQLAlchemyError
 
 from pigpios.ir_ctrl import Aircon
-from models.base import factory_temp_humid_class, AirconState
+from models.base import AirconState
+from models.base import DatabaseLockError
+from models.base import factory_temp_humid_class
 import settings
 
 logger = logging.getLogger(__name__)
@@ -52,7 +55,20 @@ class Ai(object):
 
         get_from = now - timedelta(minutes=3)
 
-        temp_humid_datas = temp_humid_cls.get_data_after_time(get_from)
+        try:
+            temp_humid_datas = temp_humid_cls.get_data_after_time(get_from)
+        except (DatabaseLockError, SQLAlchemyError):
+            logger.exception({
+                'action': 'latest temperature read',
+                'status': 'control_skipped',
+                'message': 'failed to read recent temperature data; IR control will not run',
+                'data': f'hostname: {self.hostname}, device_num: {self.device_num}',
+            })
+            self.temperature = None
+            self.current_temp = None
+            self.data_time = now
+            return
+
         temp_humid_data_list = [temp_humid_data.value for temp_humid_data in temp_humid_datas]
         df = pd.DataFrame(temp_humid_data_list)
 
@@ -80,7 +96,20 @@ class Ai(object):
         # 積分項
         get_from = now - timedelta(minutes=10)
 
-        temp_humid_datas = temp_humid_cls.get_data_after_time(get_from)
+        try:
+            temp_humid_datas = temp_humid_cls.get_data_after_time(get_from)
+        except (DatabaseLockError, SQLAlchemyError):
+            logger.exception({
+                'action': 'latest temperature read',
+                'status': 'control_skipped',
+                'message': 'failed to read temperature history; IR control will not run',
+                'data': f'hostname: {self.hostname}, device_num: {self.device_num}',
+            })
+            self.temperature = None
+            self.current_temp = None
+            self.data_time = now
+            return
+
         temp_humid_data_list = [temp_humid_data.value for temp_humid_data in temp_humid_datas]
         df2 = pd.DataFrame(temp_humid_data_list)
         corr = df2['temperature'].mean() - settings.target_temp
@@ -89,9 +118,42 @@ class Ai(object):
         self.temperature = coef_1[0]*predict_time+ coef_1[1] + corr #フィッティング関数（3分後の予測温度）
         self.current_temp = temp[-1]  # 現在の実測温度（最新のデータ）
         self.data_time = now
-        print(f"time:{self.data_time}, predict_temp:{self.temperature}, corr:{corr} temp_now:{self.current_temp}" )
-        print(df)
-        print(time, temp)
+        logger.debug({
+            'action': 'temperature prediction',
+            'status': 'success',
+            'data': (
+                f'time: {self.data_time}, predict_temp: {self.temperature}, '
+                f'corr: {corr}, temp_now: {self.current_temp}'
+            ),
+        })
+
+    def record_aircon_state(self, mode, setting_temp):
+        try:
+            result = AirconState.create(
+                time=self.data_time,
+                mode=mode,
+                setting_temp=setting_temp,
+                heater_setting_temp=self.heater_setting_temp,
+                cooler_setting_temp=self.cooler_setting_temp,
+            )
+        except Exception:
+            logger.exception({
+                'action': 'aircon_state write',
+                'status': 'write_skipped',
+                'message': 'failed to record air conditioner state',
+                'data': f'mode: {mode}, setting_temp: {setting_temp}',
+            })
+            return False
+
+        if not result:
+            logger.error({
+                'action': 'aircon_state write',
+                'status': 'write_skipped',
+                'message': 'air conditioner state was not recorded',
+                'data': f'mode: {mode}, setting_temp: {setting_temp}',
+            })
+            return False
+        return True
 
     def ctrl_temp(self):
         self.get_temp()
@@ -144,13 +206,7 @@ class Ai(object):
                     })
                     self.aircon.heater_off()
                     # オフ状態をデータベースに保存
-                    AirconState.create(
-                        time=self.data_time,
-                        mode='off',
-                        setting_temp=None,
-                        heater_setting_temp=self.heater_setting_temp,
-                        cooler_setting_temp=self.cooler_setting_temp
-                    )
+                    self.record_aircon_state(mode='off', setting_temp=None)
                     return
             
             elif self.prev_mode == 'cooler':
@@ -191,13 +247,7 @@ class Ai(object):
                     })
                     self.aircon.cooler_off()
                     # オフ状態をデータベースに保存
-                    AirconState.create(
-                        time=self.data_time,
-                        mode='off',
-                        setting_temp=None,
-                        heater_setting_temp=self.heater_setting_temp,
-                        cooler_setting_temp=self.cooler_setting_temp
-                    )
+                    self.record_aircon_state(mode='off', setting_temp=None)
                     return
         
         if self.temperature > self.temp_upper_limit:
@@ -227,13 +277,7 @@ class Ai(object):
                     self.mode_switch_pending = True
                     self.prev_mode = 'heater'
                     # オフ状態をデータベースに保存
-                    AirconState.create(
-                        time=self.data_time,
-                        mode='off',
-                        setting_temp=None,
-                        heater_setting_temp=self.heater_setting_temp,
-                        cooler_setting_temp=self.cooler_setting_temp
-                    )
+                    self.record_aircon_state(mode='off', setting_temp=None)
                     return
             else:
                 if self.cooler_setting_temp != self.cooler_setting_lower_limit:
@@ -273,13 +317,7 @@ class Ai(object):
                     self.mode_switch_pending = True
                     self.prev_mode = 'cooler'
                     # オフ状態をデータベースに保存
-                    AirconState.create(
-                        time=self.data_time,
-                        mode='off',
-                        setting_temp=None,
-                        heater_setting_temp=self.heater_setting_temp,
-                        cooler_setting_temp=self.cooler_setting_temp
-                    )
+                    self.record_aircon_state(mode='off', setting_temp=None)
                     return
             else:
                 if self.heater_setting_temp != self.heater_setting_upper_limit:
@@ -294,13 +332,7 @@ class Ai(object):
         # エアコンの状態をデータベースに保存
         mode = 'heater' if self.heater_mode else 'cooler'
         setting_temp = self.heater_setting_temp if self.heater_mode else self.cooler_setting_temp
-        AirconState.create(
-            time=self.data_time,
-            mode=mode,
-            setting_temp=setting_temp,
-            heater_setting_temp=self.heater_setting_temp,
-            cooler_setting_temp=self.cooler_setting_temp
-        )
+        self.record_aircon_state(mode=mode, setting_temp=setting_temp)
         
         logger.info({
             'action': 'ctrl_temp',
@@ -309,4 +341,3 @@ class Ai(object):
             'data': f'data_time: {self.data_time}, temp: {self.temperature}, heater_setting: {self.heater_setting_temp}, \
 cooler_setting: {self.cooler_setting_temp} heater_mode: {self.heater_mode}' 
         })
-

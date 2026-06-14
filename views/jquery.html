@@ -877,7 +877,7 @@
                 success: function(data) {
                     if (data.success) {
                         updateAirconStatus(data.status);
-                        alert('エアコン制御を開始しました');
+                        alert(data.message || 'エアコン制御を開始しました');
                     } else {
                         alert('エラー: ' + (data.error || '不明なエラー'));
                     }
@@ -891,7 +891,16 @@
         function updateAirconStatus(status) {
             var statusElement = document.getElementById('aircon-status');
             if (status && statusElement) {
-                if (status.is_running) {
+                if (status.state === 'starting') {
+                    statusElement.textContent = '状態: 開始中';
+                    statusElement.style.color = '#ff9500';
+                } else if (status.state === 'stopping') {
+                    statusElement.textContent = '状態: 停止処理中';
+                    statusElement.style.color = '#ff9500';
+                } else if (status.state === 'error') {
+                    statusElement.textContent = '状態: エラー';
+                    statusElement.style.color = '#ff3b30';
+                } else if (status.is_running) {
                     statusElement.textContent = '状態: 実行中';
                     statusElement.style.color = '#34c759';
                 } else {
