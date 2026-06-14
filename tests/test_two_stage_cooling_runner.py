@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from controllers.cooling_command_adapter import CoolingCommandType
 from controllers.cooling_command_adapter import DryRunCoolingCommandAdapter
+from controllers.cooling_command_adapter import RealCoolingCommandAdapter
 from controllers.two_stage_cooling_runner import TwoStageCoolingRunner
 from controllers.two_stage_cooling_runner import (
     TwoStageCoolingRuntimeState,
@@ -193,6 +194,56 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             result.command_result.executed_at,
             self.now,
         )
+
+    def test_real_adapter_success_commits_state(self):
+        sender = FakeCoolingSender(result=True)
+        runner = TwoStageCoolingRunner(
+            RealCoolingCommandAdapter(
+                sender,
+                now_provider=lambda: self.now,
+            )
+        )
+
+        result = runner.run_cycle(
+            self._samples(27.5, 28.0, 28.5),
+            self.now,
+        )
+
+        self.assertTrue(result.committed)
+        self.assertEqual(
+            runner.state.control_state,
+            CoolingState.RECOVERY_COOLING,
+        )
+        self.assertEqual(runner.state.current_cooler_temp, 24.0)
+
+    def test_real_adapter_failure_does_not_commit_state(self):
+        sender = FakeCoolingSender(result=False)
+        initial_state = TwoStageCoolingRuntimeState()
+        runner = TwoStageCoolingRunner(
+            RealCoolingCommandAdapter(
+                sender,
+                now_provider=lambda: self.now,
+            ),
+            initial_state=initial_state,
+        )
+
+        result = runner.run_cycle(
+            self._samples(27.5, 28.0, 28.5),
+            self.now,
+        )
+
+        self.assertFalse(result.committed)
+        self.assertEqual(runner.state, initial_state)
+
+
+class FakeCoolingSender:
+    def __init__(self, result):
+        self.result = result
+
+    def cooler(self, temp, fan='auto'):
+        del temp
+        del fan
+        return self.result
 
 
 if __name__ == '__main__':
