@@ -34,12 +34,20 @@ class RealCoolingCommandAdapterTest(unittest.TestCase):
         self.requested_at = datetime(2026, 6, 14, 18, 0, 0)
         self.executed_at = datetime(2026, 6, 14, 18, 0, 1)
 
-    def _command(self, command_type, cooler_temp=26.0):
+    def _command(
+        self,
+        command_type,
+        cooler_temp=26.0,
+        target_fan='low',
+    ):
         return CoolingCommand(
             command_type=command_type,
             cooler_temp=cooler_temp,
             requested_at=self.requested_at,
             reason='test',
+            target_fan=target_fan,
+            previous_fan='auto',
+            control_state='stable_cooling',
         )
 
     def _adapter(self, sender):
@@ -72,7 +80,7 @@ class RealCoolingCommandAdapterTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(
             sender.cooler_calls,
-            [{'temp': 26.0, 'fan': 'auto'}],
+            [{'temp': 26.0, 'fan': 'low'}],
         )
 
     def test_set_cooler_temp_sends_recommended_temperature(self):
@@ -86,8 +94,20 @@ class RealCoolingCommandAdapterTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(
             sender.cooler_calls,
-            [{'temp': 24.0, 'fan': 'auto'}],
+            [{'temp': 24.0, 'fan': 'low'}],
         )
+
+    def test_missing_fan_fails_without_calling_sender(self):
+        sender = FakeSender(result=True)
+
+        result = self._adapter(sender).execute(self._command(
+            CoolingCommandType.SET_COOLER_TEMP,
+            target_fan=None,
+        ))
+
+        self.assertFalse(result.success)
+        self.assertEqual(sender.cooler_calls, [])
+        self.assertIn('requires target_fan', result.error)
 
     def test_explicit_true_is_successful_real_result(self):
         command = self._command(CoolingCommandType.SET_COOLER_TEMP)
@@ -167,6 +187,11 @@ class RealCoolingCommandAdapterTest(unittest.TestCase):
         log_data = captured.records[-1].msg
         self.assertEqual(log_data['command'], 'set_cooler_temp')
         self.assertEqual(log_data['target_temp'], 24.0)
+        self.assertEqual(log_data['fan'], 'low')
+        self.assertEqual(log_data['previous_fan'], 'auto')
+        self.assertEqual(log_data['target_fan'], 'low')
+        self.assertEqual(log_data['control_state'], 'stable_cooling')
+        self.assertEqual(log_data['reason'], 'test')
         self.assertTrue(log_data['success'])
         self.assertIsNone(log_data['error'])
         self.assertEqual(

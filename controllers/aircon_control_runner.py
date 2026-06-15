@@ -242,6 +242,7 @@ class TwoStageCoolingControlRunner:
         previous_cooler_temp = (
             self.decision_runner.state.current_cooler_temp
         )
+        previous_fan = self.decision_runner.state.current_fan
         result = self.decision_runner.run_cycle(samples, now)
         self._after_run_cycle(now, result)
         decision = result.decision
@@ -261,9 +262,15 @@ class TwoStageCoolingControlRunner:
                 decision.recommended_cooler_temp
             ),
             'should_change': decision.should_change,
-            'action_required': decision.action_required,
+            'action_required': (
+                result.command.command_type.value != 'noop'
+            ),
             'command': result.command.command_type.value,
             'reason': decision.reason,
+            'fan': result.command.target_fan,
+            'previous_fan': previous_fan,
+            'current_fan': state.current_fan,
+            'target_fan': result.command.target_fan,
             'success': result.command_result.success,
             'confirm_count': decision.consecutive_count,
             'last_change_at': (

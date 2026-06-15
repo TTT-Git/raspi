@@ -44,11 +44,13 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             CoolingCommandType.ENSURE_COOLING,
         )
         self.assertEqual(result.command.cooler_temp, 26.0)
+        self.assertEqual(result.command.target_fan, 'low')
         self.assertTrue(result.committed)
         self.assertEqual(
             runner.state.control_state,
             CoolingState.STABLE_COOLING,
         )
+        self.assertEqual(runner.state.current_fan, 'low')
 
     def test_stopped_to_recovery_sets_cooler_to_24(self):
         adapter = DryRunCoolingCommandAdapter()
@@ -66,11 +68,13 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             CoolingCommandType.SET_COOLER_TEMP,
         )
         self.assertEqual(result.command.cooler_temp, 24.0)
+        self.assertEqual(result.command.target_fan, 'auto')
         self.assertEqual(
             runner.state.control_state,
             CoolingState.RECOVERY_COOLING,
         )
         self.assertEqual(runner.state.current_cooler_temp, 24.0)
+        self.assertEqual(runner.state.current_fan, 'auto')
         self.assertEqual(runner.state.last_change_at, self.now)
         self.assertEqual(runner.state.recovery_started_at, self.now)
 
@@ -81,6 +85,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             initial_state=TwoStageCoolingRuntimeState(
                 control_state=CoolingState.STABLE_COOLING,
                 current_cooler_temp=26.0,
+                current_fan='low',
             ),
         )
 
@@ -96,6 +101,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             CoolingCommandType.NOOP,
         )
         self.assertEqual(runner.state.current_cooler_temp, 26.0)
+        self.assertEqual(runner.state.current_fan, 'low')
 
     def test_stable_setting_change_generates_set_temperature_command(self):
         adapter = DryRunCoolingCommandAdapter()
@@ -104,6 +110,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             initial_state=TwoStageCoolingRuntimeState(
                 control_state=CoolingState.STABLE_COOLING,
                 current_cooler_temp=27.0,
+                current_fan='low',
                 consecutive_direction=StableDirection.COOL_MORE,
                 consecutive_count=1,
             ),
@@ -121,7 +128,65 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             CoolingCommandType.SET_COOLER_TEMP,
         )
         self.assertEqual(result.command.cooler_temp, 26.0)
+        self.assertEqual(result.command.target_fan, 'low')
         self.assertEqual(runner.state.current_cooler_temp, 26.0)
+        self.assertEqual(runner.state.current_fan, 'low')
+
+    def test_stable_switches_auto_to_low_without_temperature_change(self):
+        adapter = DryRunCoolingCommandAdapter()
+        runner = TwoStageCoolingRunner(
+            adapter,
+            initial_state=TwoStageCoolingRuntimeState(
+                control_state=CoolingState.STABLE_COOLING,
+                current_cooler_temp=26.0,
+                current_fan='auto',
+            ),
+        )
+
+        result = runner.run_cycle(
+            self._samples(25.5, 25.7, 25.9),
+            self.now,
+        )
+
+        self.assertEqual(
+            result.command.command_type,
+            CoolingCommandType.ENSURE_COOLING,
+        )
+        self.assertEqual(result.command.cooler_temp, 26.0)
+        self.assertEqual(result.command.previous_fan, 'auto')
+        self.assertEqual(result.command.target_fan, 'low')
+        self.assertEqual(runner.state.current_fan, 'low')
+
+    def test_recovery_exit_switches_auto_to_low_at_same_temperature(self):
+        adapter = DryRunCoolingCommandAdapter()
+        runner = TwoStageCoolingRunner(
+            adapter,
+            initial_state=TwoStageCoolingRuntimeState(
+                control_state=CoolingState.RECOVERY_COOLING,
+                current_cooler_temp=26.0,
+                current_fan='auto',
+                recovery_started_at=self.now - timedelta(minutes=10),
+            ),
+        )
+
+        result = runner.run_cycle(
+            self._samples(25.9, 26.0, 26.1),
+            self.now,
+        )
+
+        self.assertFalse(result.decision.should_change)
+        self.assertEqual(
+            result.command.command_type,
+            CoolingCommandType.ENSURE_COOLING,
+        )
+        self.assertEqual(result.command.cooler_temp, 26.0)
+        self.assertEqual(result.command.previous_fan, 'auto')
+        self.assertEqual(result.command.target_fan, 'low')
+        self.assertEqual(
+            runner.state.control_state,
+            CoolingState.STABLE_COOLING,
+        )
+        self.assertEqual(runner.state.current_fan, 'low')
 
     def test_adapter_success_commits_all_proposed_state(self):
         adapter = DryRunCoolingCommandAdapter(succeed=True)
@@ -141,6 +206,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             result.state.current_cooler_temp,
             result.decision.recommended_cooler_temp,
         )
+        self.assertEqual(result.state.current_fan, 'auto')
         self.assertEqual(
             result.state.last_change_at,
             result.decision.last_change_at,
@@ -155,6 +221,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
         initial_state = TwoStageCoolingRuntimeState(
             control_state=CoolingState.STABLE_COOLING,
             current_cooler_temp=27.0,
+            current_fan='low',
             last_change_at=self.now - timedelta(minutes=20),
             consecutive_direction=StableDirection.COOL_MORE,
             consecutive_count=1,
@@ -215,6 +282,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
             CoolingState.RECOVERY_COOLING,
         )
         self.assertEqual(runner.state.current_cooler_temp, 24.0)
+        self.assertEqual(runner.state.current_fan, 'auto')
 
     def test_real_adapter_failure_does_not_commit_state(self):
         sender = FakeCoolingSender(result=False)
@@ -234,6 +302,7 @@ class TwoStageCoolingRunnerTest(unittest.TestCase):
 
         self.assertFalse(result.committed)
         self.assertEqual(runner.state, initial_state)
+        self.assertIsNone(runner.state.current_fan)
 
 
 class FakeCoolingSender:

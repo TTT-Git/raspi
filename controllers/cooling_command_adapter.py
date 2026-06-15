@@ -23,6 +23,9 @@ class CoolingCommand:
     cooler_temp: Optional[float]
     requested_at: datetime
     reason: str
+    target_fan: Optional[str] = None
+    previous_fan: Optional[str] = None
+    control_state: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -71,9 +74,8 @@ class DryRunCoolingCommandAdapter(CoolingCommandAdapter):
 class RealCoolingCommandAdapter(CoolingCommandAdapter):
     """Execute commands through a sender that explicitly confirms success."""
 
-    def __init__(self, sender, fan='auto', now_provider=None):
+    def __init__(self, sender, now_provider=None):
         self.sender = sender
-        self.fan = fan
         self.now_provider = now_provider or datetime.now
 
     def execute(self, command):
@@ -117,9 +119,13 @@ class RealCoolingCommandAdapter(CoolingCommandAdapter):
                 raise ValueError(
                     f'{command.command_type.value} requires cooler_temp'
                 )
+            if command.target_fan is None:
+                raise ValueError(
+                    f'{command.command_type.value} requires target_fan'
+                )
             return self.sender.cooler(
                 temp=command.cooler_temp,
-                fan=self.fan,
+                fan=command.target_fan,
             )
         if command.command_type == CoolingCommandType.TURN_OFF:
             return self.sender.off()
@@ -148,6 +154,11 @@ class RealCoolingCommandAdapter(CoolingCommandAdapter):
             'status': 'success' if success else 'failed',
             'command': command.command_type.value,
             'target_temp': command.cooler_temp,
+            'fan': command.target_fan,
+            'previous_fan': command.previous_fan,
+            'target_fan': command.target_fan,
+            'control_state': command.control_state,
+            'reason': command.reason,
             'success': success,
             'error': error,
             'executed_at': executed_at.isoformat(),

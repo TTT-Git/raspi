@@ -19,7 +19,11 @@ from controllers.cooling_command_adapter import (
     DryRunCoolingCommandAdapter,
 )
 from controllers.cooling_command_adapter import RealCoolingCommandAdapter
+from controllers.two_stage_cooling_runner import (
+    TwoStageCoolingRuntimeState,
+)
 from models.two_stage_cooling import CoolingState
+from models.two_stage_cooling import StableDirection
 
 
 class DummyAircon:
@@ -330,11 +334,17 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             'success',
             'simulated',
             'temperature_data_at',
+            'fan',
+            'previous_fan',
+            'current_fan',
+            'target_fan',
         }
         self.assertTrue(required_fields.issubset(log_data))
         self.assertEqual(log_data['control_mode'], TWO_STAGE_REAL_MODE)
         self.assertTrue(log_data['success'])
         self.assertFalse(log_data['simulated'])
+        self.assertEqual(log_data['target_fan'], 'auto')
+        self.assertEqual(log_data['current_fan'], 'auto')
 
     def test_real_runner_records_ensure_cooling_after_success(self):
         recorder = FakeStateRecorder()
@@ -350,6 +360,15 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
         self.assertEqual(
             result.command.command_type.value,
             'ensure_cooling',
+        )
+        self.assertEqual(result.command.target_fan, 'low')
+        self.assertEqual(
+            runner.decision_runner.state.current_fan,
+            'low',
+        )
+        self.assertEqual(
+            runner.sender.cooler_calls,
+            [{'temp': 26.0, 'fan': 'low'}],
         )
         self.assertEqual(
             recorder.calls,
@@ -376,6 +395,58 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             [{'time': self.now, 'cooler_temp': 24.0}],
         )
 
+    def test_real_runner_sends_low_for_stable_temperature_change(self):
+        sender = FakeCommandSender(result=True)
+        runner = TwoStageCoolingRealRunner(
+            self._provider(26.3, 26.5),
+            sender,
+            now_provider=lambda: self.now,
+            state_recorder=FakeStateRecorder(),
+        )
+        runner.decision_runner.state = TwoStageCoolingRuntimeState(
+            control_state=CoolingState.STABLE_COOLING,
+            current_cooler_temp=27.0,
+            current_fan='low',
+            consecutive_direction=StableDirection.COOL_MORE,
+            consecutive_count=1,
+        )
+
+        result = runner.run_cycle()
+
+        self.assertEqual(result.command.command_type.value, 'set_cooler_temp')
+        self.assertEqual(result.command.target_fan, 'low')
+        self.assertEqual(
+            sender.cooler_calls,
+            [{'temp': 26.0, 'fan': 'low'}],
+        )
+
+    def test_real_runner_keeps_auto_fan_after_low_switch_failure(self):
+        sender = FakeCommandSender(result=False)
+        runner = TwoStageCoolingRealRunner(
+            self._provider(25.6, 25.8),
+            sender,
+            now_provider=lambda: self.now,
+            state_recorder=FakeStateRecorder(),
+        )
+        initial_state = TwoStageCoolingRuntimeState(
+            control_state=CoolingState.STABLE_COOLING,
+            current_cooler_temp=26.0,
+            current_fan='auto',
+        )
+        runner.decision_runner.state = initial_state
+
+        result = runner.run_cycle()
+
+        self.assertFalse(result.committed)
+        self.assertEqual(result.command.command_type.value, 'ensure_cooling')
+        self.assertEqual(result.command.target_fan, 'low')
+        self.assertEqual(
+            sender.cooler_calls,
+            [{'temp': 26.0, 'fan': 'low'}],
+        )
+        self.assertEqual(runner.decision_runner.state, initial_state)
+        self.assertEqual(runner.decision_runner.state.current_fan, 'auto')
+
     def test_real_runner_records_current_temperature_after_noop(self):
         recorder = FakeStateRecorder()
         runner = TwoStageCoolingRealRunner(
@@ -393,6 +464,10 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
         result = runner.run_cycle()
 
         self.assertEqual(result.command.command_type.value, 'noop')
+        self.assertEqual(
+            runner.sender.cooler_calls,
+            [{'temp': 26.0, 'fan': 'low'}],
+        )
         self.assertEqual(
             recorder.calls,
             [{'time': next_time, 'cooler_temp': 26.0}],
@@ -539,9 +614,15 @@ class AirconControlRunnerFactoryTest(unittest.TestCase):
             'predicted_temperature',
             'temperature_data_at',
             'simulated',
+            'fan',
+            'previous_fan',
+            'current_fan',
+            'target_fan',
         }
         self.assertTrue(required_fields.issubset(log_data))
         self.assertTrue(log_data['simulated'])
+        self.assertEqual(log_data['target_fan'], 'low')
+        self.assertEqual(log_data['current_fan'], 'low')
 
     def test_temperature_read_failure_skips_decision(self):
         decision_runner = RecordingDecisionRunner()
